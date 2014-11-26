@@ -24,13 +24,12 @@ end
 * Textured rects
 * In-game testing
 * Making the interface look better
-* Variable/Formatted text for health, ammo, and whatever
 
 In Progress:
 * Lua exporter
-* Having the HUD scale
 * Make sure everything works after deprecating 2 old shape tables
 * Text tool
+* Variable/Formatted text for health, ammo, and whatever
 ]]
 
 if CLIENT then
