@@ -1,0 +1,480 @@
+----// HUD Designer //----
+-- Author: Exho
+-- Version: 11/24/14
+
+if SERVER then
+	AddCSLuaFile()
+	AddCSLuaFile("cl_util.lua")
+	AddCSLuaFile("cl_assorted.lua")
+	util.AddNetworkString( "HD_OpenDesigner" )
+	resource.AddFile("resource/fonts/roboto_light.tff")
+	
+	hook.Add("PlayerSay", "HUDDesignerOpener", function(ply, text)
+		text = string.lower(text)
+	
+		if string.sub(text, 1, #text) == "!hud" then
+			net.Start("HD_OpenDesigner")
+			net.Send(ply)
+		end
+	end)
+end
+
+--[[ To Do:
+* More shapes
+* Textured rects
+* In-game testing
+* Making the interface look better
+* Variable/Formatted text for health, ammo, and whatever
+
+In Progress:
+* Lua exporter
+* Having the HUD scale
+* Make sure everything works after deprecating 2 old shape tables
+* Text tool
+]]
+
+if CLIENT then
+	HD = HD or {}
+	include("cl_util.lua")
+	include("cl_assorted.lua")
+	
+	local showtut = CreateClientConVar("hd_tutorial", "1", true, true)	
+	surface.CreateFont( "HD_Title", {
+	font = "Roboto Lt",
+	size = 20,
+	weight = 500,
+	antialias = true,
+} )
+
+	surface.CreateFont( "HD_Smaller", {
+	font = "Roboto Lt",
+	size = 14,
+	weight = 500,
+	antialias = true,
+} )
+
+	surface.CreateFont( "HD_Button", {
+	font = "Roboto Lt",
+	size = 15,
+	weight = 500,
+	antialias = true,
+} )
+	
+	function HD.OpenDesigner(firstime)
+		if HD.DesignerOpen then 
+			if IsValid(HD.Frame) then
+				HD.Frame:SetVisible(false) HD.Frame = nil HD.DesignerOpen = false 
+				return 
+			end
+		end
+		
+		if showtut:GetBool() then
+			HD.OpenTutorial()
+			HD.DesignerOpen = false
+			HD.Frame = nil
+			return
+		end
+		
+		-- // Config //
+		HD.UseAutosave = true -- Use autosave?
+		HD.AutosaveMinShapes = 5
+		HD.AutosaveIncrement = 60
+		
+		HD.DefaultCorner = 6 -- Rounded corner size
+		
+		HD.GridEnabled = true -- Use the grid?
+		HD.GridSize = 20
+		HD.DefaultCol = Color(41, 128, 185) -- Default shape color
+		
+		HD.ScalePos = true
+		HD.ScaleSize = false
+		-- // End config //
+		
+		HD.Types = {
+			"draw.RoundedBox",
+			"draw.DrawText",
+		}
+		
+		HD.Tools = {
+			["Info"] = 1,
+			["Create"] = 2,
+			["Text"] = 3,
+			["Layers"] = 4,
+			["Color"] = 5,
+			["Select"] = 6,
+			["Grid"] = 7,
+			["Delete"] = 8,
+			["Save"] = 9,
+			["Load"] = 10,
+			["Export"] = 11,
+		}
+		
+		HD.Boundaries = {} -- Used for clicking
+		HD.DrawnObjects = {} -- Used for drawing/exporting
+		for k, v in pairs(HD.Types) do
+			-- Create the categories
+			HD.DrawnObjects[1] = {}
+			HD.DrawnObjects[1][v] = {}
+		end
+		
+		HD.SelectedButton = nil
+		HD.CurTool = HD.Tools.Box
+		HD.CurType = HD.Types[1]
+		HD.ShapeID = 1
+		HD.ShapeCount = 1
+		HD.CurLayer = 1
+		HD.Layers = 1
+		HD.Cursor = "arrow"
+		HD.ProjectName = "Project Name"
+		
+		HD.ChosenCol, HD.ColMixer, GridEditor, HD.CurSizeID = nil
+		HD.LayerView, HD.LayerOpen, HD.GridOpen, HD.ColMixerOpen = false
+		HD.Sizing, HD.Moving = false
+		HD.CurMovingData = {}
+		HD.ShapeOptions = {}
+		
+		--// Frame
+			HD.Frame = vgui.Create("DFrame")
+		HD.Frame:SetSize(ScrW(),ScrH())
+		HD.Frame:SetPos(0,0)
+		HD.Frame:SetTitle("")
+		HD.Frame:MakePopup()
+		HD.Frame:SetDraggable(false)
+		HD.Frame.btnMaxim:SetVisible( false )
+		HD.Frame.btnMinim:SetVisible( false )
+		HD.Frame.btnClose:SetVisible( false )
+		HD.Frame.Paint = function()
+			draw.RoundedBox(0, 0, 0, ScrW(), 35, Color(39, 174, 96))
+		end
+		
+		-- My own title and exit button because default derma is gross
+			local Title = vgui.Create("DLabel", HD.Frame) 
+		Title:SetPos(10, 8) 
+		Title:SetSize(30, 0)
+		Title:SetColor(Color(255,255,255)) 
+		Title:SetFont("HD_Title")
+		Title:SetText("HUD Designer") 
+		Title:SizeToContents() 
+		HD.DesignerOpen = true
+		
+			local Exit = vgui.Create( "DButton", HD.Frame )
+		Exit:SetText( "X" )
+		Exit:SetTextColor( Color(255,255,255,255) )
+		Exit:SetPos( HD.Frame:GetWide() - 55, 5 ) 
+		Exit:SetFont("HD_Button")
+		Exit:SetSize( 50, 20 ) 
+		Exit.Paint = function()
+			draw.RoundedBox( 0, 0, 0, Exit:GetWide(), Exit:GetTall(), Color(200, 79, 79,255) )
+		end
+		Exit.DoClick = function()
+			surface.PlaySound("buttons/button9.wav")
+			-- Close the main frame
+			HD.Frame:Close()
+			
+			-- Nuke all the variables
+			HD.DesignerOpen = false
+			HD.Frame = nil
+			HD.ChosenCol, HD.ColMixer, GridEditor, HD.CurSizeID, HD.InfoBar,  HD.Exporter = nil
+			HD.LayerView, HD.LayerOpen, HD.GridOpen, HD.ColMixerOpen, HD.InfoOpen, HD.ExportOpen = false
+			HD.Sizing, HD.Moving = false
+			HD.CurMovingData = {}
+		end
+		
+		--// Toolbar
+			HD.IconLayout = vgui.Create( "DIconLayout", HD.Frame )
+		HD.IconLayout:SetSize( 700, 25 )
+		HD.IconLayout:SetPos( ScrW()/2-HD.IconLayout:GetWide()/2, 5 )
+		HD.IconLayout:SetSpaceY( 5 )
+		HD.IconLayout:SetSpaceX( 5 ) 
+		
+		HD.ToolbarButtons = {}
+		local i = 1
+		for i = 1,table.Count(HD.Tools) do 
+			local k, v 
+			for key, val in pairs(HD.Tools) do
+				if val == i then
+					k = key
+					v = val
+				end
+			end
+				HD.ToolbarButtons[k] = HD.IconLayout:Add( "DButton" ) 
+			HD.ToolbarButtons[k]:SetSize( 54, 29 )
+			HD.ToolbarButtons[k]:SetText(k)
+			HD.ToolbarButtons[k]:SetTextColor(Color(0,0,0))
+			HD.ToolbarButtons[k]:SetFont("HD_Button")
+			HD.ToolbarButtons[k].DoClick = function()
+				surface.PlaySound("buttons/button9.wav")
+				HD.SetTool(v,k)
+				HD.ToolFunctions(v)
+			end
+			HD.ToolbarButtons[k].Paint = function()
+				if HD.SelectedButton == k then
+					draw.RoundedBox(0, 0, 0, HD.ToolbarButtons[k]:GetWide(), HD.ToolbarButtons[k]:GetTall(), Color(200, 200, 200))
+				end
+				draw.RoundedBox(0, 2, 2, HD.ToolbarButtons[k]:GetWide()-4, HD.ToolbarButtons[k]:GetTall()-4, Color(255, 255, 255))
+			end
+		end
+		HD.IconLayout:SetPos( ScrW()/2-HD.IconLayout:GetWide()/2, 3 )
+		local ix, iy = HD.IconLayout:GetPos()
+		
+			HD.ProjectText = vgui.Create( "DTextEntry", HD.Frame )	-- create the form as a child of frame
+		HD.ProjectText:SetSize( 90, 25 )
+		HD.ProjectText:SetPos( ix - HD.ProjectText:GetWide()-20, 5 )
+		HD.ProjectText:SetText( HD.ProjectName )
+		HD.ProjectText:SetFont("HD_Button")
+		HD.ProjectText.OnChange = function( self, val )
+			HD.ProjectName = self:GetText()
+		end
+		
+			local OpenTutAgain = vgui.Create( "DButton", HD.Frame )
+		OpenTutAgain:SetText( "Tutorial" )
+		OpenTutAgain:SetTextColor( Color(0,0,0) )
+		OpenTutAgain:SetFont("HD_Button")
+		OpenTutAgain:SetSize( 70, 25 ) 
+		OpenTutAgain:SetPos( ix - HD.ProjectText:GetWide()-OpenTutAgain:GetWide()-40, 5 ) 
+		OpenTutAgain.Paint = function()
+			draw.RoundedBox( 0, 0, 0, OpenTutAgain:GetWide(), OpenTutAgain:GetTall(), Color(255, 255, 255) )
+		end
+		OpenTutAgain.DoClick = function()
+			HD.Frame:Close()
+			HD.OpenTutorial()
+			
+			HD.DesignerOpen = false
+			HD.Frame = nil
+			HD.ChosenCol, HD.ColMixer, GridEditor, HD.CurSizeID, HD.InfoBar,  HD.Exporter = nil
+			HD.LayerView, HD.LayerOpen, HD.GridOpen, HD.ColMixerOpen, HD.InfoOpen, HD.ExportOpen = false
+			HD.Sizing, HD.Moving = false
+			HD.CurMovingData = {}
+		end
+		
+		--// Grid
+			HD.Canvas = vgui.Create("DPanel", HD.Frame)
+		HD.Canvas:SetSize(ScrW()-0, ScrH()-30)
+		HD.Canvas:SetPos(0,35)
+		local NextCheck = 0
+		function HD.Canvas:PaintOver(w,h)
+			-- Drawing the shapes here
+			local i = 1
+			for i = 1, HD.Layers do
+				for type, objects in pairs(HD.DrawnObjects[i]) do
+					if type == "draw.RoundedBox" then
+						for id, data in pairs(objects) do
+							if HD.LayerView then
+								local col = nil
+								local r,g,b,a = data.color.r, data.color.g, data.color.b, data.color.a
+								if i == HD.CurLayer then
+									col = Color(r,g,b,a)
+								else
+									a = math.Clamp(a-100, 100, 255)
+									col = Color(r,g,b,a)
+								end
+								draw.RoundedBox(data.corner, data.x, data.y, data.width, data.height, col)
+								draw.DrawText( HD.GetShapeLayer(id), "Trebuchet24", data.x + 5, data.y, Color(255,255,255) )
+							else
+								draw.RoundedBox(data.corner, data.x, data.y, data.width, data.height, data.color)
+							end
+						end
+					elseif type == "draw.DrawText" then
+						for id, data in pairs(objects) do
+							draw.DrawText( data.text, data.font, data.x, data.y, data.color)
+						end
+					end
+				end
+			end
+		end
+		HD.Canvas.Paint = function()
+			-- Grid drawing taken from Luabee's poly editor
+			for i=HD.GridSize, ScrW(), HD.GridSize do
+				surface.DrawLine(i, 0, i, ScrH())
+				surface.DrawLine(0, i, ScrW(), i)
+			end
+		end
+		HD.Canvas.OnMousePressed = function(self, mc)
+			local mx, my = HD.GetMousePos()
+			if mc == MOUSE_LEFT then
+				local IsIn, id = HD.IsInShape(mx, my)
+				local Lay = HD.GetShapeLayer(id)
+				local Type = HD.GetShapeType(id)
+				
+				if HD.CurTool == HD.Tools.Color then -- Color shape
+					if IsIn then
+						--HD.DrawnShapes[Lay][id].color = HD.ChosenCol
+						HD.DrawnObjects[Lay][Type][id].color = HD.ChosenCol
+						return
+					end
+				elseif HD.CurTool == HD.Tools.Delete then -- Delete shape
+					if IsIn then
+						HD.DrawnObjects[Lay][Type][id] = nil
+						HD.Boundaries[id] = nil
+						
+						HD.CancelAlter()
+						HD.ShapeCount = HD.ShapeCount - 1
+						return
+					end
+				end
+				
+				-- Close open editor panels
+				HD.CloseOpenInfoPanels()
+
+				if IsIn then
+					if HD.IsInSize(id, mx, my) then -- Size the current shape
+						HD.SetTool(HD.Tools.Select, "Select")
+						
+						HD.CurMovingData = {}
+						HD.Moving = false
+					
+						local entry = HD.DrawnObjects[Lay][HD.GetShapeType(id)][id]
+						if entry then	
+							HD.CurSizeID = id
+							HD.Sizing = true
+						end
+					else -- Move the current shape
+						HD.SetTool(HD.Tools.Select, "Select")
+						
+						HD.CurSizeID = nil
+						HD.Sizing = false
+						
+						local bool, id, difx, dify = HD.IsInShape(mx, my)
+						HD.CurMovingData = {id=id, x=difx, y=dify}
+						HD.Moving = true
+					end
+				else -- Make sure nothing happens that we dont want to
+					HD.CancelAlter()
+				end
+			elseif mc == MOUSE_RIGHT then
+				local IsIn, id = HD.IsInShape(mx, my)
+				if not IsIn then return end
+				
+				HD.SetTool(HD.Tools.Select, "Select")
+				HD.OpenShapeSettings(id,mx,my)
+			end
+		end
+		local NextCheck = 0
+		HD.Canvas.Think = function(self) -- Think functions for stuff that has to be accurate	
+			
+			-- Autosaving
+			if CurTime() > NextCheck then
+				if HD.UseAutosave and HD.ShapeCount > HD.AutosaveMinShapes then
+					HD.Autosave()
+					NextCheck = CurTime() + HD.AutosaveIncrement
+				end
+			end
+			
+			
+			HD.Canvas:SetCursor(HD.Cursor)
+			
+			local mx, my = HD.GetMousePos()
+			local InCanvas = HD.IsInCanvas(mx, my)
+			local InShape, id = HD.IsInShape(mx, my)
+			
+			if not InCanvas then 
+				HD.CancelAlter()
+				return
+			elseif InShape or HD.Moving and input.IsMouseDown( MOUSE_LEFT ) then
+				HD.Cursor = "hand"
+			else
+				HD.Cursor = "arrow"
+			end
+		
+			if HD.Moving and input.IsMouseDown( MOUSE_LEFT ) then
+				local newx, newy = mx, my
+				if InCanvas then
+					local d = HD.CurMovingData
+					local id, difx, dify = d.id, d.x, d.y
+					local gs = HD.GridSize
+					local offx, offy = gs/2, gs*1.5 -- Offsets so the shape wont move when clicked on
+					
+					newx, newy = math.SnapTo(newx - difx + offx, gs), math.SnapTo(newy - dify - offy, gs)
+					
+					HD.EditShape(id, {x=newx, y=newy}, "move")
+				end
+			elseif HD.Sizing and input.IsMouseDown( MOUSE_LEFT ) then
+				local id = HD.CurSizeID
+				local gs = HD.GridSize
+				local entry = HD.Boundaries[id]
+				if not entry then return end
+				
+				local x, y = entry.x, entry.y
+				local farx, fary = entry.farx, entry.fary
+				local minx, miny = farx-gs, fary-gs
+					
+				if HD.IsInCanvas then
+					mx, my = math.Clamp(mx, x + 5, ScrW()), math.Clamp(my, y + 5, ScrH())
+
+					HD.EditShape(id, {width=mx-x, height=my-y}, "size")
+				end
+			end
+		end
+		
+		if firstime then
+				local Frame = vgui.Create("DFrame")
+			Frame:SetSize(300,300)
+			Frame:SetPos(ScrW()/2-Frame:GetWide()/2,ScrH()/2-Frame:GetTall()/2)
+			Frame:SetTitle("")
+			Frame:MakePopup()
+			Frame:SetDraggable(false)
+			Frame.btnMaxim:SetVisible( false )
+			Frame.btnMinim:SetVisible( false )
+			Frame.btnClose:SetVisible( false )
+			Frame.Paint = function()
+				Derma_DrawBackgroundBlur( Frame ) 
+				draw.RoundedBox(0, 0, 0, Frame:GetWide(), Frame:GetTall(), Color(39, 174, 96))
+			end
+			
+			-- My own title and exit button because default derma is gross
+				local Title = vgui.Create("DLabel", Frame) 
+			Title:SetPos(15, 8) 
+			Title:SetSize(30, 0)
+			Title:SetColor(Color(255,255,255)) 
+			Title:SetFont("HD_Title")
+			Title:SetText("Terms of use") 
+			Title:SizeToContents() 
+				local Exit = vgui.Create( "DButton", Frame )
+			Exit:SetText( "I accept" )
+			Exit:SetTextColor( Color(255,255,255,255) )
+			Exit:SetFont("HD_Button")
+			Exit:SetSize( 70, 30 ) 
+			Exit:SetPos( Frame:GetWide()/2-Exit:GetWide()/2, Frame:GetTall()-Exit:GetTall()-10 ) 
+			Exit.Paint = function()
+				draw.RoundedBox( 0, 0, 0, Exit:GetWide(), Exit:GetTall(), Color(200, 79, 79,255) )
+			end
+			Exit.DoClick = function()
+				surface.PlaySound("buttons/button9.wav")
+				Frame:Close()
+			end
+			
+				local Title = vgui.Create("DLabel", Frame) 
+			Title:SetPos(10, 30) 
+			Title:SetSize(30, 0)
+			Title:SetColor(Color(255,255,255)) 
+			Title:SetFont("HD_Smaller")
+			Title:SetText([[
+			1. You are not allowed to sell any scripts you make
+				using this because it makes HUD creation very, very
+				easy. Just to prevent a large amount of low effort
+				scripts being sold.
+				
+			2. You can distribute HUDs created with this for free
+				and you can use them on your personal servers! 
+				All I ask is that you include some credit as to 
+				how you made your HUD.
+				
+			3. You can add, remove, or modify the script as
+				much as you want. Just please dont reupload
+				it anywhere else.
+			
+			Have fun :)
+			]]) 
+			Title:SizeToContents() 
+		end
+	end
+	
+	local hud = {"CHudHealth", "CHudBattery", "CHudAmmo", "CHudSecondaryAmmo"}
+	hook.Add( "HUDShouldDraw", "hide hud", function( name )
+		if HD.DesignerOpen then
+			for k, v in pairs(hud) do
+				if name == v then return false end
+			end
+		end
+	end)
+end
