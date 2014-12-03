@@ -1,6 +1,6 @@
 ----// HUD Designer //----
 -- Author: Exho
--- Version: 11/24/14
+-- Version: 11/25/14
 
 if SERVER then
 	AddCSLuaFile()
@@ -12,7 +12,7 @@ if SERVER then
 	hook.Add("PlayerSay", "HUDDesignerOpener", function(ply, text)
 		text = string.lower(text)
 	
-		if string.sub(text, 1, #text) == "!hud" then
+		if string.sub(text, 1) == "!hud" then
 			net.Start("HD_OpenDesigner")
 			net.Send(ply)
 		end
@@ -21,14 +21,18 @@ end
 
 --[[ To Do:
 * More shapes
-* Textured rects
 * In-game testing
 * Making the interface look better
+* Recreate TTT's HUD in the editor
+* Variable based width/height for rectangles
+* On-start pop up menu to choose a save
+* Color picker tool
+* FIX BOUNDARIES
+* Fix the exporting Y axis being slightly off because of the Canvas size
 
 In Progress:
-* Lua exporter
-* Make sure everything works after deprecating 2 old shape tables
 * Text tool
+* Textured rects - Make a texture selector in the Shape Options right click menu
 * Variable/Formatted text for health, ammo, and whatever
 ]]
 
@@ -77,7 +81,7 @@ if CLIENT then
 		-- // Config //
 		HD.UseAutosave = true -- Use autosave?
 		HD.AutosaveMinShapes = 5
-		HD.AutosaveIncrement = 60
+		HD.AutosaveIncrement = 120
 		
 		HD.DefaultCorner = 6 -- Rounded corner size
 		
@@ -92,24 +96,45 @@ if CLIENT then
 		HD.Types = {
 			"draw.RoundedBox",
 			"draw.DrawText",
+			"surface.DrawTexturedRect",
+		}
+		
+		HD.FormatTypes = {
+			-- [Display Name] = {Placeholder text, code to use when exporting, string.format type}
+			["Health"] = {text="%health%", code="lp:Health()", type={"%i"}},
+			["Ammo Max"] = {text="%ammomax%", code="wep.Primary.ClipSize or 0", type={"%i"}},
+			["Ammo Current"] = {text="%ammocur%", code="wep:Clip1() or 0", type={"%i"}},
+			["Ammo Reserve"] = {text="%ammores%", code="wep:Ammo1() or 0", type={"%i"}},
+			["Armor"] = {text="%armor%", code="lp:Armor()", type={"%i"}},
+			["Team"] = {text="%team%", code="lp:Team()", type={"%s"}},
+			["Name"] = {text="%name%", code="lp:Nick()", type={"%s"}},
+			
+			["TTT - Round State"] = {text="%tttround%", code="L[ roundstate_string[GAMEMODE.round_state] ]", type={"%s"}},
+			["TTT - Round Time"] = {text="%ttttime%", code='util.SimpleTime(math.max(0, GetGlobalFloat("ttt_round_end", 0) - CurTime()), "%02i:%02i")', type={"%s"}},
+			["TTT - Role"] = {text="%tttrole%", code="L[lp:GetRoleStringRaw()]", type={"%s"}},
+			
+			["RP - Salary"] = {text="%rpsalary%", code='DarkRP.getPhrase("salary", DarkRP.formatMoney(lp:getDarkRPVar("salary")), "")', type={"%s"}},
+			["RP - Job"] = {text="%rpjob%", code='DarkRP.getPhrase("job", lp:getDarkRPVar("job") or "")', type={"%s"}},
+			["RP - Money"] = {text="%rpmoney%", code='DarkRP.getPhrase("wallet", DarkRP.formatMoney(localplayer:getDarkRPVar("money")), "")', type={"%s"}},
+			
 		}
 		
 		HD.Tools = {
 			["Info"] = 1,
 			["Create"] = 2,
-			["Text"] = 3,
-			["Layers"] = 4,
-			["Color"] = 5,
-			["Select"] = 6,
-			["Grid"] = 7,
-			["Delete"] = 8,
-			["Save"] = 9,
-			["Load"] = 10,
-			["Export"] = 11,
+			["Layers"] = 3,
+			["Color"] = 4,
+			["Select"] = 5,
+			["Grid"] = 6,
+			["Delete"] = 7,
+			["Save"] = 8,
+			["Load"] = 9,
+			["Export"] = 10,
 		}
 		
 		HD.Boundaries = {} -- Used for clicking
 		HD.DrawnObjects = {} -- Used for drawing/exporting
+		HD.ShapesOnLayer = {} -- Shape counts per layer
 		for k, v in pairs(HD.Types) do
 			-- Create the categories
 			HD.DrawnObjects[1] = {}
@@ -126,8 +151,11 @@ if CLIENT then
 		HD.Cursor = "arrow"
 		HD.ProjectName = "Project Name"
 		
-		HD.ChosenCol, HD.ColMixer, GridEditor, HD.CurSizeID = nil
-		HD.LayerView, HD.LayerOpen, HD.GridOpen, HD.ColMixerOpen = false
+		HD.ScaleSize, HD.ScalePos = false
+		
+		HD.ChosenCol, HD.ColMixer, HD.GridEditor, HD.LoadSel, HD.CreateOpen, HD.CurSizeID = nil
+		HD.LayerView, HD.LayerOpen, HD.GridOpen, HD.LoadOpen, HD.ColMixerOpen, HD.CreatePanel = false
+		
 		HD.Sizing, HD.Moving = false
 		HD.CurMovingData = {}
 		HD.ShapeOptions = {}
@@ -173,8 +201,8 @@ if CLIENT then
 			-- Nuke all the variables
 			HD.DesignerOpen = false
 			HD.Frame = nil
-			HD.ChosenCol, HD.ColMixer, GridEditor, HD.CurSizeID, HD.InfoBar,  HD.Exporter = nil
-			HD.LayerView, HD.LayerOpen, HD.GridOpen, HD.ColMixerOpen, HD.InfoOpen, HD.ExportOpen = false
+			HD.ChosenCol, HD.ColMixer, GridEditor, SaveSel, HD.CurSizeID, HD.InfoBar,  HD.Exporter = nil
+			HD.LayerView, HD.LayerOpen, LoadOpen, HD.GridOpen, HD.ColMixerOpen, HD.InfoOpen, HD.ExportOpen = false
 			HD.Sizing, HD.Moving = false
 			HD.CurMovingData = {}
 		end
@@ -224,28 +252,14 @@ if CLIENT then
 		HD.ProjectText.OnChange = function( self, val )
 			HD.ProjectName = self:GetText()
 		end
-		
-			local OpenTutAgain = vgui.Create( "DButton", HD.Frame )
-		OpenTutAgain:SetText( "Tutorial" )
-		OpenTutAgain:SetTextColor( Color(0,0,0) )
-		OpenTutAgain:SetFont("HD_Button")
-		OpenTutAgain:SetSize( 70, 25 ) 
-		OpenTutAgain:SetPos( ix - HD.ProjectText:GetWide()-OpenTutAgain:GetWide()-40, 5 ) 
-		OpenTutAgain.Paint = function()
-			draw.RoundedBox( 0, 0, 0, OpenTutAgain:GetWide(), OpenTutAgain:GetTall(), Color(255, 255, 255) )
+		local LastCheck = 0
+		HD.ProjectText.Think = function()
+			if CurTime() > LastCheck then
+				HD.ProjectText:SetText( HD.ProjectName )
+				LastCheck = CurTime() + 2
+			end
 		end
-		OpenTutAgain.DoClick = function()
-			HD.Frame:Close()
-			HD.OpenTutorial()
-			
-			HD.DesignerOpen = false
-			HD.Frame = nil
-			HD.ChosenCol, HD.ColMixer, GridEditor, HD.CurSizeID, HD.InfoBar,  HD.Exporter = nil
-			HD.LayerView, HD.LayerOpen, HD.GridOpen, HD.ColMixerOpen, HD.InfoOpen, HD.ExportOpen = false
-			HD.Sizing, HD.Moving = false
-			HD.CurMovingData = {}
-		end
-		
+
 		--// Grid
 			HD.Canvas = vgui.Create("DPanel", HD.Frame)
 		HD.Canvas:SetSize(ScrW()-0, ScrH()-30)
@@ -255,8 +269,9 @@ if CLIENT then
 			-- Drawing the shapes here
 			local i = 1
 			for i = 1, HD.Layers do
-				for type, objects in pairs(HD.DrawnObjects[i]) do
-					if type == "draw.RoundedBox" then
+				HD.DrawnObjects[i] = HD.DrawnObjects[i] or {}
+				for class, objects in pairs(HD.DrawnObjects[i]) do
+					if class == "draw.RoundedBox" then
 						for id, data in pairs(objects) do
 							if HD.LayerView then
 								local col = nil
@@ -273,13 +288,46 @@ if CLIENT then
 								draw.RoundedBox(data.corner, data.x, data.y, data.width, data.height, data.color)
 							end
 						end
-					elseif type == "draw.DrawText" then
+					elseif class == "surface.DrawTexturedRect" then
+						for id, data in pairs(objects) do
+							local color -- Is our texture colored?
+							if data.color == HD.DefaultCol then color = Color(255,255,255) end -- If not, use white
+							
+							if type(data.texture) == "IMaterial" then
+								surface.SetMaterial( data.texture )
+								surface.SetDrawColor( color )
+								surface.DrawTexturedRect( data.x, data.y, data.width, data.height )
+							else
+								surface.SetTexture( data.texture )
+								surface.SetDrawColor( color )
+								surface.DrawTexturedRect( data.x, data.y, data.width, data.height )
+							end
+						end
+					elseif class == "draw.DrawText" then
 						for id, data in pairs(objects) do
 							draw.DrawText( data.text, data.font, data.x, data.y, data.color)
 						end
 					end
 				end
 			end
+			
+			-- Draws the area where you are "supposed" to be able to drag
+			--[[for k, v in pairs(HD.Boundaries) do
+				local gs = HD.GridSize
+				if HD.GridSize < 10 then
+					gs = 10 * 1.5
+				else
+					gs = gs * 1.5
+				end
+				
+				local farx, fary = v.farx, v.fary
+				local minx, miny = farx-gs, fary-gs
+				
+				local x, y = minx+HD.GridSize, miny-HD.GridSize
+				local width, height = farx-minx, fary-miny
+				
+				draw.RoundedBox(4, x, y, width, height, Color(255,0,0,100))
+			end]]
 		end
 		HD.Canvas.Paint = function()
 			-- Grid drawing taken from Luabee's poly editor
@@ -297,7 +345,6 @@ if CLIENT then
 				
 				if HD.CurTool == HD.Tools.Color then -- Color shape
 					if IsIn then
-						--HD.DrawnShapes[Lay][id].color = HD.ChosenCol
 						HD.DrawnObjects[Lay][Type][id].color = HD.ChosenCol
 						return
 					end
@@ -348,17 +395,33 @@ if CLIENT then
 				HD.OpenShapeSettings(id,mx,my)
 			end
 		end
-		local NextCheck = 0
+		local NextAutosave, NextCheck = CurTime()+30, 0
 		HD.Canvas.Think = function(self) -- Think functions for stuff that has to be accurate	
-			
-			-- Autosaving
+			-- Delayed functions
 			if CurTime() > NextCheck then
-				if HD.UseAutosave and HD.ShapeCount > HD.AutosaveMinShapes then
+				-- Autosave
+				if HD.UseAutosave and CurTime() > NextAutosave and HD.ShapeCount > HD.AutosaveMinShapes then
 					HD.Autosave()
-					NextCheck = CurTime() + HD.AutosaveIncrement
+					NextAutosave = CurTime() + HD.AutosaveIncrement
 				end
+				
+				-- Update layers
+				HD.DrawnObjects = HD.DrawnObjects or {}
+				HD.Layers = table.Count(HD.DrawnObjects)
+				
+				-- Accurate shapes per layer count
+				local i = 1
+				for i = 1, HD.Layers do
+					local Count = 0
+					
+					for k, v in pairs(HD.DrawnObjects[i]) do
+						Count = Count + table.Count(v) -- Count # of each shape type
+					end
+					HD.ShapesOnLayer[i] = Count
+				end
+				
+				NextCheck = CurTime() + 1
 			end
-			
 			
 			HD.Canvas:SetCursor(HD.Cursor)
 			
@@ -405,12 +468,25 @@ if CLIENT then
 			end
 		end
 		
-		if firstime then
-				local Frame = vgui.Create("DFrame")
+		if firstime then -- Open Terms
+			-- Invisible panel so clients cannot click the Editor
+				local AntiClick = vgui.Create("DFrame")
+			AntiClick:SetSize(ScrW(),ScrH())
+			AntiClick:SetPos(0,0)
+			AntiClick:SetTitle("")
+			AntiClick:MakePopup()
+			Frame:SetDraggable(false)
+			AntiClick.btnMaxim:SetVisible( false )
+			AntiClick.btnMinim:SetVisible( false )
+			AntiClick.btnClose:SetVisible( true )
+			AntiClick.Paint = function()
+				draw.RoundedBox(0, 0, 0, AntiClick:GetWide(), AntiClick:GetTall(), Color(0,0,0,0))
+			end
+			
+				local Frame = vgui.Create("DFrame", AntiClick)
 			Frame:SetSize(300,300)
 			Frame:SetPos(ScrW()/2-Frame:GetWide()/2,ScrH()/2-Frame:GetTall()/2)
 			Frame:SetTitle("")
-			Frame:MakePopup()
 			Frame:SetDraggable(false)
 			Frame.btnMaxim:SetVisible( false )
 			Frame.btnMinim:SetVisible( false )
@@ -440,6 +516,7 @@ if CLIENT then
 			Exit.DoClick = function()
 				surface.PlaySound("buttons/button9.wav")
 				Frame:Close()
+				AntiClick:Close()
 			end
 			
 				local Title = vgui.Create("DLabel", Frame) 

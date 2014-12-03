@@ -1,8 +1,12 @@
 if CLIENT then
 	-- Assorted stuff to remove clutter
 	
+	HD = HD or {}
+	
 	--// Shape settings
 	function HD.OpenShapeSettings(id,mx,my)
+		if HD.ShapeOptions[id] then HD.ShapeOptions[id]:SetVisible(false) HD.ShapeOptions[id] = nil end
+		
 		HD.CancelAlter() -- Make sure no shapes are altered while open
 		HD.ShapeOptions = HD.ShapeOptions or {}
 		local ShapeStuff = HD.GetShapeData(id)
@@ -10,12 +14,13 @@ if CLIENT then
 		
 			HD.ShapeOptions[id] = vgui.Create("DFrame", HD.Frame)
 		HD.ShapeOptions[id]:SetSize(150, 120)
-		HD.ShapeOptions[id]:SetPos(mx, my - 60)
+		local x, y = math.Clamp( mx, 0, ScrW()-HD.ShapeOptions[id]:GetWide() ), math.Clamp( my, 0, ScrH()-HD.ShapeOptions[id]:GetTall())
+		HD.ShapeOptions[id]:SetPos( x, y )
 		HD.ShapeOptions[id]:SetTitle("")
 		HD.ShapeOptions[id]:SetDraggable(true)
 		HD.ShapeOptions[id].btnMaxim:SetVisible( false )
 		HD.ShapeOptions[id].btnMinim:SetVisible( false )
-		HD.ShapeOptions[id].btnClose:SetVisible( true )
+		HD.ShapeOptions[id].btnClose:SetVisible( false )
 		HD.ShapeOptions[id].Paint = function()
 			local self = HD.ShapeOptions[id]
 			draw.RoundedBox(0, 0, 0, self:GetWide(), self:GetTall(), Color(39, 174, 96))
@@ -30,9 +35,20 @@ if CLIENT then
 			self:MouseCapture( true )
 			return
 		end
-		HD.ShapeOptions[id].btnClose.DoClick = function ( button ) 
+		
+		local Exit = vgui.Create( "DButton", HD.ShapeOptions[id] )
+		Exit:SetText( "X" )
+		Exit:SetTextColor( Color(255,255,255,255) )
+		Exit:SetPos( HD.ShapeOptions[id]:GetWide() - 45, 5 ) 
+		Exit:SetFont("HD_Button")
+		Exit:SetSize( 40, 20 ) 
+		Exit.Paint = function()
+			draw.RoundedBox( 0, 0, 0, Exit:GetWide(), Exit:GetTall(), Color(200, 79, 79,255) )
+		end
+		Exit.DoClick = function()
+			surface.PlaySound("buttons/button9.wav")
 			HD.CurMovingData, HD.Moving, HD.CurSizeID, HD.Sizing = {}, false, nil, false
-			HD.ShapeOptions[id]:SetVisible(false) 
+			HD.ShapeOptions[id]:Close()
 			HD.ShapeOptions[id] = nil
 		end
 		
@@ -54,7 +70,6 @@ if CLIENT then
 			HD.EditShape(id, {layer=HD.CurLayer, newlayer=new}, "layer")
 		end
 		
-		
 		if Type == "draw.RoundedBox" then
 				local NumCorner = vgui.Create( "DNumberWang", HD.ShapeOptions[id] )
 			NumCorner:SetDecimals( 0 )
@@ -65,7 +80,7 @@ if CLIENT then
 			NumCorner:SetTooltip("Change your shape's corner size")
 			NumCorner.OnValueChanged = function()
 				local new = NumCorner:GetValue()
-				if new == nil or new == 0 then return end
+				if new == nil then return end
 				
 				if new ~= ShapeStuff.corner then
 					HD.EditShape(id, {corner=new}, "corner")
@@ -102,29 +117,30 @@ if CLIENT then
 				HD.DrawnObjects[layer][Type][id].font = self:GetText() -- Set the new text
 			end
 			
-				HD.ShapeOptions[id].Format = vgui.Create( "DTextEntry", HD.ShapeOptions[id] )	-- create the form as a child of frame
+			local Key = nil
+				HD.ShapeOptions[id].Format = vgui.Create( "DComboBox", HD.ShapeOptions[id] )	-- create the form as a child of frame
 			HD.ShapeOptions[id].Format:SetSize( 80, 25 )
 			HD.ShapeOptions[id].Format:SetPos( 20, 180 )
-			HD.ShapeOptions[id].Format:SetText( HD.DrawnObjects[layer][Type][id].format or "Parameters" )
-			HD.ShapeOptions[id].Format:SetFont("HD_Button")
-			HD.ShapeOptions[id].Format:SetTooltip("string.format parameters")
-			HD.ShapeOptions[id].Format.OnEnter = function( self )
-				local val = string.Trim(self:GetText())
-
-				if val ~= "Parameters" and val ~= "" then
-					HD.DrawnObjects[layer][Type][id].text = Text:GetText()
-					HD.DrawnObjects[layer][Type][id].format = val
-					HD.ShapeOptions[id].Format:SetValue( val )
+			for k, v in pairs(HD.FormatTypes) do
+				if v.code == HD.DrawnObjects[layer][Type][id].format then
+					Key = k -- Grab the FormatType key
+					break
 				end
 			end
-			
-				local FormatHelp = vgui.Create( "DImageButton", HD.ShapeOptions[id] )
-			FormatHelp:SetPos( 110, 185 )	
-			FormatHelp:SetImage( "icon16/information.png" )	
-			FormatHelp:SizeToContents()	
-			FormatHelp:SetTooltip("Click me to go to Exho's help page")
-			FormatHelp.DoClick = function()
-				gui.OpenURL( "http://www.exho.comeze.com/huddesigner/help.html" )
+			HD.ShapeOptions[id].Format:SetValue(Key or "Type")
+			HD.ShapeOptions[id].Format:SetFont("HD_Button")
+			HD.ShapeOptions[id].Format:SetTooltip("string.format types")
+			a = {}
+			for n in pairs(HD.FormatTypes) do table.insert(a, n) end -- Sort the table alphabetically
+			table.sort(a)
+			for i,n in ipairs(a) do
+				HD.ShapeOptions[id].Format:AddChoice(n) 
+			end
+			HD.ShapeOptions[id].Format.OnSelect = function( self, index, value )
+				local fmat = HD.FormatTypes[value]
+				
+				HD.DrawnObjects[layer][Type][id].text = fmat.text
+				HD.DrawnObjects[layer][Type][id].format = fmat.code
 			end
 		end
 		
@@ -180,10 +196,9 @@ if CLIENT then
 		Frame:SetDraggable(false)
 		Frame.btnMaxim:SetVisible( false )
 		Frame.btnMinim:SetVisible( false )
-		Frame.btnClose:SetVisible( true )
+		Frame.btnClose:SetVisible( false )
 		Frame.Paint = function()
 			draw.RoundedBox(0, 0, 0, Frame:GetWide(), Frame:GetTall(), Color(39, 174, 96))
-			--draw.RoundedBox(0, Frame:GetWide()/2-10, 0, 20, Frame:GetTall(), Color(30, 30, 30))
 		end
 		
 		surface.SetFont( "HD_Title" )
@@ -242,7 +257,9 @@ if CLIENT then
 			Exit.DoClick = function()
 				Frame:Close()
 				LocalPlayer():ConCommand( "hd_tutorial 0" )
-				HD.OpenDesigner(true)
+				timer.Simple(0.3, function()
+					HD.OpenDesigner(true)
+				end)
 			end
 			
 				local Back = vgui.Create( "DButton", Frame )
@@ -265,14 +282,106 @@ if CLIENT then
 	--// Tool functions 
 	function HD.ToolFunctions(num)
 		if num == HD.Tools.Create then -- Create shape
-			local gs = HD.GridSize
+			if HD.CreateOpen then 
+				HD.SetTool()
+				HD.CreatePanel:SetVisible(false) HD.CreateOpen = false HD.CreatePanel = nil 
+				return 
+			end
+			
+			local grandparent, parent = HD.IconLayout, HD.ToolbarButtons.Create
+			local px, py = parent:GetPos()
+			local gpx, gpy = grandparent:GetPos()
+			px, py = px + gpx, py + gpy
+			
+			
+				HD.CreatePanel = vgui.Create("DPanel", HD.Frame)
+			HD.CreatePanel:SetSize(180, 70)
+			HD.CreatePanel:SetPos(px-(HD.CreatePanel:GetWide()/4), 40)
+			HD.CreatePanel.Paint = function()
+				local self = HD.CreatePanel
+				draw.RoundedBox(0, 0, 0, self:GetWide(), self:GetTall(), Color(39, 174, 96))
+			end
+			
+				local CurLay = vgui.Create("DLabel", HD.CreatePanel)
+			CurLay:SetPos(35, 5) 
+			CurLay:SetColor(Color(255,255,255)) 
+			CurLay:SetFont("HD_Smaller")
+			CurLay:SetText("")
+			CurLay:SizeToContents() 
+			
+				local ShapeLayout = vgui.Create( "DIconLayout", HD.CreatePanel )
+			ShapeLayout:SetSize( HD.CreatePanel:GetSize() )
+			ShapeLayout:SetPos( 10, 10 )
+			ShapeLayout:SetSpaceY( 5 )
+			ShapeLayout:SetSpaceX( 5 ) 
+				
+			local i = 1
+			local FakeTexture = Material( "vgui/nonexistant.png" )
+			local Count = 0 
+			for i = 1, #HD.Types do	
+				local ToDraw = HD.Types[i]
+				
+					local ShapeType = vgui.Create("DButton", ShapeLayout)
+				ShapeType:SetSize(50, 50)
+				ShapeType:SetTextColor(Color(255,255,255))
+				ShapeType:SetFont("HD_Smaller")
+				ShapeType:SetText("")
+				ShapeType:SetTooltip(ToDraw)
+				ShapeType.Paint = function()
+					draw.RoundedBox(0, 0, 0, ShapeType:GetWide(), ShapeType:GetTall(), Color(255,255,255,255))
+					
+					if ToDraw == "draw.RoundedBox" then
+						draw.RoundedBox(8, 5, 5, 40, 40, Color(90,90,90,255))
+					elseif ToDraw == "draw.DrawText" then
+						draw.DrawText( "TEXT", "HD_Title", 5, 15, Color(90,90,90,255))
+					elseif ToDraw == "surface.DrawTexturedRect" then
+						surface.SetMaterial( FakeTexture )
+						surface.SetDrawColor(255,255,255)
+						surface.DrawTexturedRect( 5, 5, 40, 40 )
+					else
+					
+					end
+				end
+				ShapeType.DoClick = function()
+					HD.SetType( ToDraw )
+					
+					if ToDraw == "draw.DrawText" then
+						local font = "Trebuchet24"
+						local text = "Sample Text"
+						local x, y = HD.Canvas:GetWide()/2 - width/2, HD.Canvas:GetTall()/2 - height/2
+						
+						HD.AddText(HD.ShapeID, x, y, text, font, color, HD.CurLayer)
+					elseif ToDraw == "draw.RoundedBox" then
+						local width = 200
+						local height = 200
+						local x, y = HD.Canvas:GetWide()/2, HD.Canvas:GetTall()/2
+						
+						HD.AddShape(HD.ShapeID, x, y, width, height, HD.ChosenCol, 4, HD.CurLayer)
+					elseif ToDraw == "surface.DrawTexturedRect" then
+						local width = 200
+						local height = 200
+						local x, y = HD.Canvas:GetWide()/2, HD.Canvas:GetTall()/2
+						
+						HD.AddShape(HD.ShapeID, x, y, width, height, HD.ChosenCol, FakeTexture, HD.CurLayer)
+					end
+				end
+				Count = Count + 1
+				if Count % 3 == 0 and Count > 3 then
+					local width, height = HD.CreatePanel:GetSize()
+					HD.CreatePanel:SetSize(180, height + 55 )
+				end	
+			end
+			
+			
+			HD.CreateOpen = true
+		
+			
+			--[[local gs = HD.GridSize
 			local width = HD.GridSize * 6
 			local height = HD.GridSize * 8
-			width, height = math.SnapTo(width,gs), math.SnapTo(height, gs)
 			local x, y = HD.Canvas:GetWide()/2 - width/2, HD.Canvas:GetTall()/2 - height/2
-			x, y = math.SnapTo(x, gs), math.SnapTo(y, gs)
 			
-			HD.AddShape(HD.ShapeID, x, y, width, height, HD.ChosenCol, 4, HD.CurLayer)
+			HD.AddShape(HD.ShapeID, x, y, width, height, HD.ChosenCol, 4, HD.CurLayer)]]
 		elseif num == HD.Tools.Text then
 			local gs = HD.GridSize
 			local width = HD.GridSize * 6
@@ -402,28 +511,27 @@ if CLIENT then
 			
 			local i = 1
 			local YBuffer = 30
-			local BarBuffer = 0
-			if HD.Layers > 1 then BarBuffer = 15 end
+			local BarBuffer = 15
 			
-			for i = 1, HD.Layers do		
-				local Count 
+			local Count = {}
+			
+			for i = 1, HD.Layers do	
+				Count[i] = 0
 					local Layer = vgui.Create("DButton", HD.LayerSel)
 				Layer:SetPos(10, YBuffer)
 				Layer:SetSize(HD.LayerSel:GetWide()-20-BarBuffer, 50)
 				Layer:SetTextColor(Color(255,255,255))
-				Layer:SetText("Layer: "..i.." Shapes: 0")
+				Layer:SetFont("HD_Smaller")
 				Layer.Paint = function()
-					local self = Layer
 					local col = Color(90,90,90, 200)
-					if Count == 0 then col.a = 100 end
+					if Count[i] == 0 then col.a = 100 end
 					if HD.CurLayer == i then col.a = 255 else col.a = 200 end
-					draw.RoundedBox(0, 0, 0, self:GetWide(), self:GetTall(), col)
+					draw.RoundedBox(0, 0, 0, Layer:GetWide(), Layer:GetTall(), col)
 				end
 				Layer.Think = function()
-					for k, v in pairs(HD.DrawnObjects[i]) do
-						Count = #v
-					end
-					Layer:SetText("Layer: "..i.." Shapes: "..Count)
+					if Count[i] == nil then Count[i] = 0 end
+					Count[i] = HD.ShapesOnLayer[i]
+					Layer:SetText("Layer: "..i.." Shapes: "..tostring(Count[i]))
 				end
 				Layer.DoClick = function()
 					surface.PlaySound("buttons/button9.wav")
@@ -432,6 +540,33 @@ if CLIENT then
 				end
 				
 				YBuffer = YBuffer + Layer:GetTall() + 20
+			end
+			
+				local NewLayer = vgui.Create("DButton", HD.LayerSel)
+			NewLayer:SetPos(10, YBuffer)
+			NewLayer:SetSize(HD.LayerSel:GetWide()-20-BarBuffer, 50)
+			NewLayer:SetTextColor(Color(255,255,255))
+			NewLayer:SetText("Add Layer")
+			NewLayer:SetFont("HD_Smaller")
+			NewLayer.Paint = function()
+				local col = Color(90,90,90, 255)
+				draw.RoundedBox(0, 0, 0, NewLayer:GetWide(), NewLayer:GetTall(), col)
+			end
+			NewLayer.DoClick = function()
+				surface.PlaySound("buttons/button9.wav")
+				HD.Layers = HD.Layers + 1
+				HD.CurLayer = HD.Layers
+				
+				local i = 1
+				for i = 1, HD.Layers do
+					for k, v in pairs(HD.Tools) do
+						HD.DrawnObjects[i] = HD.DrawnObjects[i] or {}
+						HD.DrawnObjects[i][v] = HD.DrawnObjects[i][v] or {}
+					end
+				end
+				
+				HD.LayerSel:SetVisible(false) HD.LayerOpen = false HD.LayerView = false HD.LayerSel = nil 
+				HD.ToolFunctions(HD.Tools.Layers)
 			end
 			
 			HD.LayerOpen = true
@@ -660,9 +795,71 @@ if CLIENT then
 		elseif num == HD.Tools.Save then -- Save current project in Json format
 			HD.Save()
 		elseif num == HD.Tools.Load then -- Load project from Json format
-			-- Create a menu similar to the layer menu with all the available "save_" files
-		
-			HD.Load()
+	
+			if HD.LoadOpen then 
+				HD.SetTool()
+				HD.LoadSel:SetVisible(false) HD.LoadOpen = false HD.LayerView = false HD.LoadSel = nil 
+				return 
+			end
+			
+			local grandparent, parent = HD.IconLayout, HD.ToolbarButtons.Load
+			local px, py = parent:GetPos()
+			local gpx, gpy = grandparent:GetPos()
+			px, py = px + gpx, py + gpy
+			
+			local Saves = file.Find( "hud_designer/save_*.txt", "DATA" ) -- Grab all the saves
+			
+			local SizeAlter = 1
+			if #Saves > 2 then SizeAlter = 2 end
+			
+				HD.LoadSel = vgui.Create("DScrollPanel", HD.Frame)
+			HD.LoadSel:SetSize(180, 95*SizeAlter)
+			HD.LoadSel:SetPos(px-(HD.LoadSel:GetWide()/4), 40)
+			HD.LoadSel.Paint = function()
+				draw.RoundedBox(0, 0, 0, HD.LoadSel:GetWide(), HD.LoadSel:GetTall(), Color(39, 174, 96))
+			end
+			
+				local CurLay = vgui.Create("DLabel", HD.LoadSel)
+			CurLay:SetPos(25, 5) 
+			CurLay:SetColor(Color(255,255,255)) 
+			CurLay:SetFont("HD_Smaller")
+			CurLay:SetText("Click on a save to load")
+			CurLay:SizeToContents() 
+			
+			local SavePanels = {}
+			local i = 1
+			local YBuffer = 30
+			local BarBuffer = 0
+			if #Saves > 1 then BarBuffer = 15 end
+			
+			for i = 1, #Saves do	
+				local txt = file.Read( "hud_designer/"..Saves[i], "DATA" )
+				local tab = util.JSONToTable( txt ) 
+				
+				local name = tab.ProjectName or Saves[i]
+				name = string.gsub(name, "save_", "")
+				name = string.gsub(name, ".txt", "")
+				name = string.gsub(name, "_", " ")
+				
+				local Count 
+					SavePanels[i] = vgui.Create("DButton", HD.LoadSel)
+				SavePanels[i]:SetPos(10, YBuffer)
+				SavePanels[i]:SetSize(HD.LoadSel:GetWide()-20-BarBuffer, 50)
+				SavePanels[i]:SetTextColor(Color(255,255,255))
+				SavePanels[i]:SetText(name)
+				SavePanels[i].Paint = function()
+					local col = Color(90,90,90, 250)
+					draw.RoundedBox(0, 0, 0, SavePanels[i]:GetWide(), SavePanels[i]:GetTall(), col)
+				end
+				SavePanels[i].DoClick = function()
+					HD.Load( Saves[i] )
+				end
+				
+				YBuffer = YBuffer + SavePanels[i]:GetTall() + 20
+			end
+			
+			HD.LoadOpen = true
+			--HD.Load()
 		end
 	end
 end
