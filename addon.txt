@@ -1,0 +1,15 @@
+"AddonInfo"
+{
+	"name" "TTT Weapon Checker (Server Side)"
+	"author_name" "Author Name"
+	"info" "
+{
+	"description": "Description",
+	"type": "tool",
+	"tags": 
+	[
+		"fun",
+		"cartoon"
+	]
+}"
+}

@@ -1,6 +1,6 @@
 ----// HUD Designer //----
 -- Author: Exho
--- Version: 11/25/14
+-- Version: 12/5/14
 
 if SERVER then
 	AddCSLuaFile()
@@ -8,6 +8,9 @@ if SERVER then
 	AddCSLuaFile("cl_assorted.lua")
 	util.AddNetworkString( "HD_OpenDesigner" )
 	resource.AddFile("resource/fonts/roboto_light.tff")
+	for k, v in pairs(file.Find( "materials/vgui/hud_designer/*", "GAME" )) do
+		resource.AddFile(v)
+	end
 	
 	hook.Add("PlayerSay", "HUDDesignerOpener", function(ply, text)
 		text = string.lower(text)
@@ -25,15 +28,12 @@ end
 * Making the interface look better
 * Recreate TTT's HUD in the editor
 * Variable based width/height for rectangles
-* On-start pop up menu to choose a save
-* Color picker tool
-* FIX BOUNDARIES
-* Fix the exporting Y axis being slightly off because of the Canvas size
+* Font creator
+* Copy tool
 
 In Progress:
-* Text tool
 * Textured rects - Make a texture selector in the Shape Options right click menu
-* Variable/Formatted text for health, ammo, and whatever
+* On-start pop up menu to choose a save
 ]]
 
 if CLIENT then
@@ -42,6 +42,12 @@ if CLIENT then
 	include("cl_assorted.lua")
 	
 	local showtut = CreateClientConVar("hd_tutorial", "1", true, true)	
+	
+	local i_grabber = Material( "vgui/hud_designer/grabber.png" )
+	--local i_bucket = Material( "vgui/hud_designer/bucket.png" )
+	--local i_dropper = Material( "vgui/hud_designer/dropper.png" )
+	--local i_trash = Material( "vgui/hud_designer/trashcan.png" )
+	
 	surface.CreateFont( "HD_Title", {
 	font = "Roboto Lt",
 	size = 20,
@@ -58,7 +64,7 @@ if CLIENT then
 
 	surface.CreateFont( "HD_Button", {
 	font = "Roboto Lt",
-	size = 15,
+	size = 16,
 	weight = 500,
 	antialias = true,
 } )
@@ -66,7 +72,10 @@ if CLIENT then
 	function HD.OpenDesigner(firstime)
 		if HD.DesignerOpen then 
 			if IsValid(HD.Frame) then
-				HD.Frame:SetVisible(false) HD.Frame = nil HD.DesignerOpen = false 
+				HD.Frame:Close()
+				if HD.SplashFrame then
+					HD.SplashFrame:Close()
+				end
 				return 
 			end
 		end
@@ -87,7 +96,7 @@ if CLIENT then
 		
 		HD.GridEnabled = true -- Use the grid?
 		HD.GridSize = 20
-		HD.DefaultCol = Color(41, 128, 185) -- Default shape color
+		HD.DefaultCol = Color(41, 128, 185, 255) -- Default shape color
 		
 		HD.ScalePos = true
 		HD.ScaleSize = false
@@ -100,22 +109,22 @@ if CLIENT then
 		}
 		
 		HD.FormatTypes = {
-			-- [Display Name] = {Placeholder text, code to use when exporting, string.format type}
-			["Health"] = {text="%health%", code="lp:Health()", type={"%i"}},
-			["Ammo Max"] = {text="%ammomax%", code="wep.Primary.ClipSize or 0", type={"%i"}},
-			["Ammo Current"] = {text="%ammocur%", code="wep:Clip1() or 0", type={"%i"}},
-			["Ammo Reserve"] = {text="%ammores%", code="wep:Ammo1() or 0", type={"%i"}},
-			["Armor"] = {text="%armor%", code="lp:Armor()", type={"%i"}},
-			["Team"] = {text="%team%", code="lp:Team()", type={"%s"}},
-			["Name"] = {text="%name%", code="lp:Nick()", type={"%s"}},
+			-- [Display Name] = {Placeholder text, code to use when exporting}
+			["Health"] = {text="%health%", code="lp:Health()"},
+			["Ammo Max"] = {text="%ammomax%", code="wep.Primary.ClipSize or 0"},
+			["Ammo Current"] = {text="%ammocur%", code="wep:Clip1() or 0"},
+			["Ammo Reserve"] = {text="%ammores%", code="wep:Ammo1() or 0"},
+			["Armor"] = {text="%armor%", code="lp:Armor()"},
+			["Team"] = {text="%team%", code="lp:Team()"},
+			["Name"] = {text="%name%", code="lp:Nick()"},
 			
-			["TTT - Round State"] = {text="%tttround%", code="L[ roundstate_string[GAMEMODE.round_state] ]", type={"%s"}},
-			["TTT - Round Time"] = {text="%ttttime%", code='util.SimpleTime(math.max(0, GetGlobalFloat("ttt_round_end", 0) - CurTime()), "%02i:%02i")', type={"%s"}},
-			["TTT - Role"] = {text="%tttrole%", code="L[lp:GetRoleStringRaw()]", type={"%s"}},
+			["TTT - Round State"] = {text="%tttround%", code="L[ roundstate_string[GAMEMODE.round_state] ]"},
+			["TTT - Round Time"] = {text="%ttttime%", code='util.SimpleTime(math.max(0, GetGlobalFloat("ttt_round_end", 0) - CurTime()), "%02i:%02i")'},
+			["TTT - Role"] = {text="%tttrole%", code="L[lp:GetRoleStringRaw()]"},
 			
-			["RP - Salary"] = {text="%rpsalary%", code='DarkRP.getPhrase("salary", DarkRP.formatMoney(lp:getDarkRPVar("salary")), "")', type={"%s"}},
-			["RP - Job"] = {text="%rpjob%", code='DarkRP.getPhrase("job", lp:getDarkRPVar("job") or "")', type={"%s"}},
-			["RP - Money"] = {text="%rpmoney%", code='DarkRP.getPhrase("wallet", DarkRP.formatMoney(localplayer:getDarkRPVar("money")), "")', type={"%s"}},
+			["RP - Salary"] = {text="%rpsalary%", code='DarkRP.getPhrase("salary", DarkRP.formatMoney(lp:getDarkRPVar("salary")), "")'},
+			["RP - Job"] = {text="%rpjob%", code='DarkRP.getPhrase("job", lp:getDarkRPVar("job") or "")'},
+			["RP - Money"] = {text="%rpmoney%", code='DarkRP.getPhrase("wallet", DarkRP.formatMoney(localplayer:getDarkRPVar("money")), "")'},
 			
 		}
 		
@@ -150,13 +159,14 @@ if CLIENT then
 		HD.Layers = 1
 		HD.Cursor = "arrow"
 		HD.ProjectName = "Project Name"
+		HD.FAKE_TEXTURE = Material( "vgui/nonexistant.png" )
 		
 		HD.ScaleSize, HD.ScalePos = false
 		
 		HD.ChosenCol, HD.ColMixer, HD.GridEditor, HD.LoadSel, HD.CreateOpen, HD.CurSizeID = nil
 		HD.LayerView, HD.LayerOpen, HD.GridOpen, HD.LoadOpen, HD.ColMixerOpen, HD.CreatePanel = false
 		
-		HD.Sizing, HD.Moving = false
+		HD.Sizing, HD.Moving, HD.ClickColor = false
 		HD.CurMovingData = {}
 		HD.ShapeOptions = {}
 		
@@ -198,11 +208,14 @@ if CLIENT then
 			-- Close the main frame
 			HD.Frame:Close()
 			
+			if HD.SplashFrame then
+				HD.SplashFrame:Close()
+			end
+			
 			-- Nuke all the variables
 			HD.DesignerOpen = false
 			HD.Frame = nil
-			HD.ChosenCol, HD.ColMixer, GridEditor, SaveSel, HD.CurSizeID, HD.InfoBar,  HD.Exporter = nil
-			HD.LayerView, HD.LayerOpen, LoadOpen, HD.GridOpen, HD.ColMixerOpen, HD.InfoOpen, HD.ExportOpen = false
+			HD.CloseOpenInfoPanels()
 			HD.Sizing, HD.Moving = false
 			HD.CurMovingData = {}
 		end
@@ -216,7 +229,7 @@ if CLIENT then
 		
 		HD.ToolbarButtons = {}
 		local i = 1
-		for i = 1,table.Count(HD.Tools) do 
+		for i = 1, table.Count(HD.Tools) do 
 			local k, v 
 			for key, val in pairs(HD.Tools) do
 				if val == i then
@@ -242,17 +255,19 @@ if CLIENT then
 			end
 		end
 		HD.IconLayout:SetPos( ScrW()/2-HD.IconLayout:GetWide()/2, 3 )
-		local ix, iy = HD.IconLayout:GetPos()
 		
-			HD.ProjectText = vgui.Create( "DTextEntry", HD.Frame )	-- create the form as a child of frame
+		--// Project Name
+		local ix, iy = HD.IconLayout:GetPos()
+			HD.ProjectText = vgui.Create( "DTextEntry", HD.Frame )
 		HD.ProjectText:SetSize( 90, 25 )
 		HD.ProjectText:SetPos( ix - HD.ProjectText:GetWide()-20, 5 )
 		HD.ProjectText:SetText( HD.ProjectName )
 		HD.ProjectText:SetFont("HD_Button")
+		local LastCheck = 0
 		HD.ProjectText.OnChange = function( self, val )
 			HD.ProjectName = self:GetText()
+			LastCheck = CurTime() + 20
 		end
-		local LastCheck = 0
 		HD.ProjectText.Think = function()
 			if CurTime() > LastCheck then
 				HD.ProjectText:SetText( HD.ProjectName )
@@ -283,15 +298,15 @@ if CLIENT then
 									col = Color(r,g,b,a)
 								end
 								draw.RoundedBox(data.corner, data.x, data.y, data.width, data.height, col)
-								draw.DrawText( HD.GetShapeLayer(id), "Trebuchet24", data.x + 5, data.y, Color(255,255,255) )
+								draw.DrawText( HD.GetShapeLayer(id) or "", "Trebuchet24", data.x + 5, data.y, Color(255,255,255) )
 							else
 								draw.RoundedBox(data.corner, data.x, data.y, data.width, data.height, data.color)
 							end
 						end
 					elseif class == "surface.DrawTexturedRect" then
 						for id, data in pairs(objects) do
-							local color -- Is our texture colored?
-							if data.color == HD.DefaultCol then color = Color(255,255,255) end -- If not, use white
+							local color = data.color-- Is our texture colored?
+							if color == HD.DefaultCol then color = Color(255,255,255) end -- If not, use white
 							
 							if type(data.texture) == "IMaterial" then
 								surface.SetMaterial( data.texture )
@@ -312,22 +327,20 @@ if CLIENT then
 			end
 			
 			-- Draws the area where you are "supposed" to be able to drag
-			--[[for k, v in pairs(HD.Boundaries) do
-				local gs = HD.GridSize
-				if HD.GridSize < 10 then
-					gs = 10 * 1.5
-				else
-					gs = gs * 1.5
+			for id, v in pairs(HD.Boundaries) do
+				if HD.GetShapeType(id) != "draw.DrawText" and HD.GetShapeLayer(id) == HD.CurLayer then 
+					local gs = 20
+					local farx, fary = v.farx, v.fary
+					local minx, miny = farx-gs, fary-gs
+					
+					local x, y = minx, miny
+					local width, height = farx-minx, fary-miny
+					
+					surface.SetDrawColor(150,150,150)
+					surface.SetMaterial( i_grabber )
+					surface.DrawTexturedRect( x+5, y+5, width-5, height-5 )
 				end
-				
-				local farx, fary = v.farx, v.fary
-				local minx, miny = farx-gs, fary-gs
-				
-				local x, y = minx+HD.GridSize, miny-HD.GridSize
-				local width, height = farx-minx, fary-miny
-				
-				draw.RoundedBox(4, x, y, width, height, Color(255,0,0,100))
-			end]]
+			end
 		end
 		HD.Canvas.Paint = function()
 			-- Grid drawing taken from Luabee's poly editor
@@ -343,9 +356,19 @@ if CLIENT then
 				local Lay = HD.GetShapeLayer(id)
 				local Type = HD.GetShapeType(id)
 				
-				if HD.CurTool == HD.Tools.Color then -- Color shape
+				if HD.ClickColor then -- Grab the color of the current shape
 					if IsIn then
-						HD.DrawnObjects[Lay][Type][id].color = HD.ChosenCol
+						local col = HD.DrawnObjects[Lay][Type][id].color
+						HD.Mixer:SetColor(col)
+						HD.ChosenCol = col
+						
+						HD.ClickColor = false
+						return
+					end
+				elseif HD.CurTool == HD.Tools.Color then -- Color shape
+					if IsIn then
+						local newcolor = HD.ChosenCol
+						HD.DrawnObjects[Lay][Type][id].color = newcolor
 						return
 					end
 				elseif HD.CurTool == HD.Tools.Delete then -- Delete shape
@@ -415,7 +438,7 @@ if CLIENT then
 					local Count = 0
 					
 					for k, v in pairs(HD.DrawnObjects[i]) do
-						Count = Count + table.Count(v) -- Count # of each shape type
+						Count = Count + table.Count(v) -- Count # of each shape Type
 					end
 					HD.ShapesOnLayer[i] = Count
 				end
@@ -423,12 +446,12 @@ if CLIENT then
 				NextCheck = CurTime() + 1
 			end
 			
-			HD.Canvas:SetCursor(HD.Cursor)
-			
+			-- Grab positions
 			local mx, my = HD.GetMousePos()
 			local InCanvas = HD.IsInCanvas(mx, my)
 			local InShape, id = HD.IsInShape(mx, my)
 			
+			-- Cursor related stuff
 			if not InCanvas then 
 				HD.CancelAlter()
 				return
@@ -437,6 +460,7 @@ if CLIENT then
 			else
 				HD.Cursor = "arrow"
 			end
+			HD.Canvas:SetCursor(HD.Cursor)
 		
 			if HD.Moving and input.IsMouseDown( MOUSE_LEFT ) then
 				local newx, newy = mx, my
@@ -475,7 +499,7 @@ if CLIENT then
 			AntiClick:SetPos(0,0)
 			AntiClick:SetTitle("")
 			AntiClick:MakePopup()
-			Frame:SetDraggable(false)
+			AntiClick:SetDraggable(false)
 			AntiClick.btnMaxim:SetVisible( false )
 			AntiClick.btnMinim:SetVisible( false )
 			AntiClick.btnClose:SetVisible( true )
@@ -542,6 +566,8 @@ if CLIENT then
 			Have fun :)
 			]]) 
 			Title:SizeToContents() 
+		else
+			HD.Splash()
 		end
 	end
 	
