@@ -1,6 +1,6 @@
 ----// HUD Designer //----
 -- Author: Exho
--- Version: 12/5/14
+-- Version: 12/7/14
 
 if SERVER then
 	AddCSLuaFile()
@@ -25,7 +25,6 @@ end
 --[[ To Do:
 * More shapes
 * In-game testing
-* Making the interface look better
 * Recreate TTT's HUD in the editor
 * Variable based width/height for rectangles
 * Font creator
@@ -38,6 +37,7 @@ In Progress:
 
 if CLIENT then
 	HD = HD or {}
+	local client = LocalPlayer()
 	include("cl_util.lua")
 	include("cl_assorted.lua")
 	
@@ -92,7 +92,7 @@ if CLIENT then
 		HD.AutosaveMinShapes = 5
 		HD.AutosaveIncrement = 120
 		
-		HD.DefaultCorner = 6 -- Rounded corner size
+		HD.DefaultCorner = 4 -- Rounded corner size
 		
 		HD.GridEnabled = true -- Use the grid?
 		HD.GridSize = 20
@@ -106,10 +106,12 @@ if CLIENT then
 			"draw.RoundedBox",
 			"draw.DrawText",
 			"surface.DrawTexturedRect",
+			--"render.RenderView" -- X and Y axis are broken some how
 		}
 		
 		HD.FormatTypes = {
 			-- [Display Name] = {Placeholder text, code to use when exporting}
+			
 			["Health"] = {text="%health%", code="lp:Health()"},
 			["Ammo Max"] = {text="%ammomax%", code="wep.Primary.ClipSize or 0"},
 			["Ammo Current"] = {text="%ammocur%", code="wep:Clip1() or 0"},
@@ -126,6 +128,7 @@ if CLIENT then
 			["RP - Job"] = {text="%rpjob%", code='DarkRP.getPhrase("job", lp:getDarkRPVar("job") or "")'},
 			["RP - Money"] = {text="%rpmoney%", code='DarkRP.getPhrase("wallet", DarkRP.formatMoney(localplayer:getDarkRPVar("money")), "")'},
 			
+			["None"] = {text="N/A", code="N/A"}, -- Disables the format
 		}
 		
 		HD.Tools = {
@@ -159,7 +162,7 @@ if CLIENT then
 		HD.Layers = 1
 		HD.Cursor = "arrow"
 		HD.ProjectName = "Project Name"
-		HD.FAKE_TEXTURE = Material( "vgui/nonexistant.png" )
+		HD.FAKE_TEXTURE = "vgui/nonexistant.png"
 		
 		HD.ScaleSize, HD.ScalePos = false
 		
@@ -218,6 +221,8 @@ if CLIENT then
 			HD.CloseOpenInfoPanels()
 			HD.Sizing, HD.Moving = false
 			HD.CurMovingData = {}
+			
+			gui.EnableScreenClicker( false )
 		end
 		
 		--// Toolbar
@@ -322,6 +327,18 @@ if CLIENT then
 						for id, data in pairs(objects) do
 							draw.DrawText( data.text, data.font, data.x, data.y, data.color)
 						end
+					elseif class == "render.RenderView" then
+						for id, data in pairs(objects) do
+							local CamData = {}
+							CamData.angles = data.angles
+							CamData.origin = data.origin
+							CamData.x = data.x
+							CamData.y = data.y
+							CamData.w = data.width
+							CamData.h = data.height
+							
+							render.RenderView( CamData )
+						end
 					end
 				end
 			end
@@ -338,7 +355,7 @@ if CLIENT then
 					
 					surface.SetDrawColor(150,150,150)
 					surface.SetMaterial( i_grabber )
-					surface.DrawTexturedRect( x+5, y+5, width-5, height-5 )
+					surface.DrawTexturedRect( x+5, y+5, width-10, height-10 )
 				end
 			end
 		end

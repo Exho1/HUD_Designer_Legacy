@@ -2,6 +2,7 @@ if CLIENT then
 	-- Contains commands and functions
 	
 	HD = HD or {}
+	local client = LocalPlayer()
 	
 	-- Open panel commands
 	net.Receive("HD_OpenDesigner", function( len, ply )
@@ -33,11 +34,16 @@ if CLIENT then
 		width, height = math.SnapTo(width, HD.GridSize), math.SnapTo(height, HD.GridSize)
 		
 		if HD.CurType == "draw.RoundedBox" then
-			HD.DrawnObjects[layer][HD.CurType][id] = {x=x, y=y, width=width, height=height, color=color, corner=special}
+			HD.DrawnObjects[layer][HD.CurType][id] = {x=x, y=y, width=width, height=height, color=color, corner=special.corner}
 		elseif HD.CurType == "surface.DrawTexturedRect" then
-			HD.DrawnObjects[layer][HD.CurType][id] = {x=x, y=y, width=width, height=height, color=color, texture=special}
-		else
+			HD.DrawnObjects[layer][HD.CurType][id] = {x=x, y=y, width=width, height=height, color=color, texture=special.texture}
+		elseif HD.CurType == "render.RenderView" then
+			local ang = special.angles 
+			local origin = special.origin
 			
+			HD.DrawnObjects[layer][HD.CurType][id] = {x=x, y=y, width=width, height=height, origin=special.origin, angles=special.angles}
+		else
+		
 		end
 
 		-- Boundaries somehow need to be altered in order for them to be accurate... Look into this
@@ -88,6 +94,7 @@ if CLIENT then
 		
 		-- Localize some variables
 		local x, y width, height, text, font, color, layer, newlayer, corner, format, texture, texturestring = nil
+		local origin, angles = nil
 		
 		-- Declare the basics with fallbacks
 		x, y = tab.x or D.x, tab.y or D.y
@@ -95,16 +102,21 @@ if CLIENT then
 		color = tab.color or D.color
 		
 		-- Declare specifics
-		if Type == "draw.RoundedBox" then
-			width, height = tab.width or D.width, tab.height or D.height
-			corner =  tab.corner or D.corner
-		elseif Type == "surface.DrawTexturedRect" then
-			width, height = tab.width or D.width, tab.height or D.height
-			texture = tab.texture or D.texture, tab.texturestring or D.texturestring 
-		elseif Type == "draw.DrawText" then
+		if Type == "draw.DrawText" then
 			text, font = tab.text or D.text, tab.font or D.font
 			width, height = HD.GetTextSize(text, font)
 			format = tab.format or D.format
+		else
+			width, height = tab.width or D.width, tab.height or D.height
+		end
+		
+		if Type == "draw.RoundedBox" then
+			corner =  tab.corner or D.corner
+		elseif Type == "surface.DrawTexturedRect" then
+			texture = tab.texture or D.texture, tab.texturestring or D.texturestring 
+		elseif Type == "render.RenderView" then
+			origin = tab.origin or D.origin
+			angles = tab.angles or D.angles
 		end
 		
 		if mode == "size" then -- Size shape
@@ -402,15 +414,12 @@ if CLIENT then
 					
 					-- Fix up textures
 					if Type == "surface.DrawTexturedRect" then
-						local Fake = HD.FAKE_TEXTURE -- Checkerboard texture
-						local tex = HD.DrawnObjects[i][Type][HD.ShapeID].texture or HD.DrawnObjects[i][Type][HD.ShapeID].texturestring or Fake
-						if type(tex) == "IMaterial" or type(tex) == "number" then
-							HD.DrawnObjects[i][Type][HD.ShapeID].texture = tex
-						else
-							print("Missing texture for "..i..", falling back onto "..tex)
-							local num = surface.GetTextureID(tex)
-							HD.DrawnObjects[i][Type][HD.ShapeID].texture = num
-						end
+						local Fake = HD.FAKE_TEXTURE -- Checkerboard texture fallback
+						local tex = HD.DrawnObjects[i][Type][HD.ShapeID].texturestring or Fake
+						local num = surface.GetTextureID(tex)
+						
+						HD.DrawnObjects[i][Type][HD.ShapeID].texture = num
+						HD.DrawnObjects[i][Type][HD.ShapeID].texturestring = tex
 					end
 						
 					-- Create the boundaries

@@ -2,6 +2,7 @@ if CLIENT then
 	-- A whole lot of derma
 	
 	HD = HD or {}
+	local client = LocalPlayer()
 	
 	--// Tool functions 
 	function HD.ToolFunctions(num)
@@ -17,9 +18,11 @@ if CLIENT then
 			local gpx, gpy = grandparent:GetPos()
 			px, py = px + gpx, py + gpy
 			
+			local YMod = 0
+			if #HD.Types > 3 then YMod = 55 end
 			
 				HD.CreatePanel = vgui.Create("DPanel", HD.Frame)
-			HD.CreatePanel:SetSize(180, 70)
+			HD.CreatePanel:SetSize(180, 70 + YMod)
 			HD.CreatePanel:SetPos(px-(HD.CreatePanel:GetWide()/4), 40)
 			HD.CreatePanel.Paint = function()
 				local self = HD.CreatePanel
@@ -40,7 +43,7 @@ if CLIENT then
 			ShapeLayout:SetSpaceX( 5 ) 
 				
 			local i = 1
-			local FakeTexture = HD.FAKE_TEXTURE
+			local FakeTexture = Material( HD.FAKE_TEXTURE )
 			local Count = 0 
 			for i = 1, #HD.Types do	
 				local ToDraw = HD.Types[i]
@@ -62,6 +65,21 @@ if CLIENT then
 						surface.SetMaterial( FakeTexture )
 						surface.SetDrawColor(255,255,255)
 						surface.DrawTexturedRect( 5, 5, 40, 40 )
+					elseif ToDraw == "render.RenderView" then
+						local pos = client:GetPos()
+						local ang = client:EyeAngles()
+						local x, y = ShapeType:GetPos()
+						x, y = x + 5, y + 5
+						
+						local CamData = {}
+						CamData.angles = Angle(90, ang.yaw, 0)
+						CamData.origin = Vector(pos.x, pos.y, pos.z + 100)
+						CamData.x = px-(HD.CreatePanel:GetWide()/4) + x + 10
+						CamData.y = 50 + y
+						CamData.w = 40
+						CamData.h = 40
+						
+						render.RenderView( CamData )
 					else
 					
 					end
@@ -82,7 +100,7 @@ if CLIENT then
 						local height = 200
 						local x, y = HD.Canvas:GetWide()/2-width/2, HD.Canvas:GetTall()/2-height/2
 						
-						HD.AddShape(HD.ShapeID, x, y, width, height, HD.ChosenCol, 4, HD.CurLayer)
+						HD.AddShape(HD.ShapeID, x, y, width, height, HD.ChosenCol, {corner=4}, HD.CurLayer)
 					elseif ToDraw == "surface.DrawTexturedRect" then
 						local width = 200
 						local height = 200
@@ -91,7 +109,16 @@ if CLIENT then
 						
 						if color == HD.DefaultCol then color = Color(255,255,255) end
 						
-						HD.AddShape(HD.ShapeID, x, y, width, height, color, FakeTexture, HD.CurLayer)
+						HD.AddShape(HD.ShapeID, x, y, width, height, color, {texture=FakeTexture}, HD.CurLayer)
+					elseif ToDraw == "render.RenderView" then
+						local width = 200
+						local height = 200
+						local x, y = HD.Canvas:GetWide()/2-width/2, HD.Canvas:GetTall()/2-height/2
+						
+						local angles = Angle(90, client:EyeAngles().yaw, 0)
+						local origin = Vector(client:GetPos().x, client:GetPos().y, client:GetPos().z + 100)
+						HD.AddShape(HD.ShapeID, x, y, width, height, Color(255,255,255), {angles=angles, origin=origin}, HD.CurLayer)
+
 					end
 					
 					HD.SetTool(HD.Tools.Select, "Select")
@@ -733,6 +760,13 @@ if CLIENT then
 			HD.ShapeOptions[id].Format.OnSelect = function( self, index, value )
 				local fmat = HD.FormatTypes[value]
 				
+				if value == "None" then 
+					HD.ShapeOptions[id].Format:SetValue("Type")
+					HD.DrawnObjects[layer][Type][id].format = nil
+					HD.DrawnObjects[layer][Type][id].text = "Sample Text"
+					return
+				end
+				
 				HD.DrawnObjects[layer][Type][id].text = fmat.text
 				HD.DrawnObjects[layer][Type][id].format = fmat.code
 			end
@@ -750,7 +784,7 @@ if CLIENT then
 				--scripted/breen_fakemonitor_1
 				local mat = surface.GetTextureID(self:GetText())
 				--local mat = Material(self:GetText())
-				print(mat)
+				
 				HD.DrawnObjects[layer][Type][id].texture = mat
 				HD.DrawnObjects[layer][Type][id].texturestring = self:GetText()
 			end
@@ -815,18 +849,29 @@ if CLIENT then
 			draw.RoundedBox(0, 0, 0, Frame:GetWide(), Frame:GetTall(), Color(39, 174, 96))
 		end
 		
-		surface.SetFont( "HD_Title" )
-
-			local Title = vgui.Create("DLabel", Frame) 
-		Title:SetSize(Frame:GetWide()/2, 0)
+		local text = "Exho's HUD Designer"
+		local w, h = HD.GetTextSize(text, "HD_Title")
+		
+			local Title = vgui.Create("DLabel", Frame)
+		Title:SetPos( Frame:GetWide()/2-w/2, 15) 
 		Title:SetColor(Color(255,255,255)) 
 		Title:SetFont("HD_Title")
-		Title:SetText("Please choose a tutorial Type to view") 
+		Title:SetText(text)
 		Title:SizeToContents() 
-		local w,h = surface.GetTextSize( Title:GetText() )
-		Title:SetPos(ScrW()/2-w/1.5, ScrH()/2-120) 
 		
-			local Choice1 = vgui.Create( "DButton", Frame )
+
+			local Choose = vgui.Create("DLabel", Frame) 
+		Choose:SetSize(Frame:GetWide()/2, 0)
+		Choose:SetColor(Color(255,255,255)) 
+		Choose:SetFont("HD_Title")
+		Choose:SetText("Please choose a tutorial type to view") 
+		Choose:SizeToContents() 
+		local w,h =HD.GetTextSize(Choose:GetText(), "HD_Title")
+		Choose:SetPos(ScrW()/2-w/1.5, ScrH()/2-120) 
+		
+		local Choice1, Choice2 = nil
+		
+			Choice1 = vgui.Create( "DButton", Frame )
 		Choice1:SetText( "Text" )
 		Choice1:SetTextColor( Color(255,255,255,255) )
 		Choice1:SetFont("HD_Title")
@@ -836,10 +881,60 @@ if CLIENT then
 			draw.RoundedBox( 0, 0, 0, Choice1:GetWide(), Choice1:GetTall(), Color(200, 79, 79,255) )
 		end
 		Choice1.DoClick = function()
+			Choice1:SetVisible(false)
+			Choice2:SetVisible(false)
+			Title:SetVisible(false)
+			Choose:SetVisible(false)
 			surface.PlaySound("buttons/button9.wav")
+			
+			local text = "Exho's HUD Designer Tutorial"
+			local w, h = HD.GetTextSize(text, "HD_Title")
+			
+				local Title = vgui.Create("DLabel", Frame)
+			Title:SetPos( Frame:GetWide()/2-w/2, 15) 
+			Title:SetColor(Color(255,255,255)) 
+			Title:SetFont("HD_Title")
+			Title:SetText(text)
+			Title:SizeToContents() 
+			
+				local Video = vgui.Create( "HTML", Frame) 
+			Video:SetSize( Frame:GetWide()-100, Frame:GetTall() - 100 )
+			Video:SetPos(50, 50)
+			Video:OpenURL("http://www.exho.comeze.com/huddesigner/tutorial.html")
+			
+			local Exit = vgui.Create( "DButton", Frame )
+			Exit:SetText( "Exit" )
+			Exit:SetTextColor( Color(255,255,255,255) )
+			Exit:SetFont("HD_Title")
+			Exit:SetSize( 80, 30 ) 
+			Exit:SetPos( Frame:GetWide()/2+10, Frame:GetTall()-Exit:GetTall()-10 ) 
+			Exit.Paint = function()
+				draw.RoundedBox( 0, 0, 0, Exit:GetWide(), Exit:GetTall(), Color(200, 79, 79,255) )
+			end
+			Exit.DoClick = function()
+				Frame:Close()
+				LocalPlayer():ConCommand( "hd_tutorial 0" )
+				timer.Simple(0.3, function()
+					HD.OpenDesigner(true)
+				end)
+			end
+			
+				local Back = vgui.Create( "DButton", Frame )
+			Back:SetText( "Back" )
+			Back:SetTextColor( Color(255,255,255,255) )
+			Back:SetFont("HD_Title")
+			Back:SetSize( 80, 30 ) 
+			Back:SetPos( Frame:GetWide()/2-Back:GetWide()-10, Frame:GetTall()-Back:GetTall()-10 ) 
+			Back.Paint = function()
+				draw.RoundedBox( 0, 0, 0, Back:GetWide(), Back:GetTall(), Color(66, 244, 123,255) )
+			end
+			Back.DoClick = function()
+				Frame:Close()
+				HD.OpenTutorial()
+			end
 		end
 		
-			local Choice2 = vgui.Create( "DButton", Frame )
+			Choice2 = vgui.Create( "DButton", Frame )
 		Choice2:SetText( "Video" )
 		Choice2:SetTextColor( Color(255,255,255,255) )
 		Choice2:SetFont("HD_Title")
