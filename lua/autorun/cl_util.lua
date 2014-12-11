@@ -37,11 +37,6 @@ if CLIENT then
 			HD.DrawnObjects[layer][HD.CurType][id] = {x=x, y=y, width=width, height=height, color=color, corner=special.corner}
 		elseif HD.CurType == "surface.DrawTexturedRect" then
 			HD.DrawnObjects[layer][HD.CurType][id] = {x=x, y=y, width=width, height=height, color=color, texture=special.texture}
-		elseif HD.CurType == "render.RenderView" then
-			local ang = special.angles 
-			local origin = special.origin
-			
-			HD.DrawnObjects[layer][HD.CurType][id] = {x=x, y=y, width=width, height=height, origin=special.origin, angles=special.angles}
 		else
 		
 		end
@@ -114,9 +109,6 @@ if CLIENT then
 			corner =  tab.corner or D.corner
 		elseif Type == "surface.DrawTexturedRect" then
 			texture = tab.texture or D.texture, tab.texturestring or D.texturestring 
-		elseif Type == "render.RenderView" then
-			origin = tab.origin or D.origin
-			angles = tab.angles or D.angles
 		end
 		
 		if mode == "size" then -- Size shape
@@ -528,7 +520,7 @@ if CLIENT then
 								if modw == math.huge then width = 0 else width = "ScrW()/"..modw.."" end
 								if modh == math.huge then height = 0 else height = "ScrH()/"..modh.."" end
 							end
-							y = y + 30 -- Fix for the Canvas not being exactly screen size
+							y = y + HD.Y_BUFFER -- Fix for the Canvas not being exactly screen size
 							if HD.ScalePos then
 								modx, mody = math.Round(ScrW()/x, 2), math.Round(ScrH()/y, 2)
 								if modx == math.huge then x = 0 else x = "ScrW()/"..modx end
@@ -559,7 +551,7 @@ if CLIENT then
 							local x,y,width,height,col,corner = tab.x,tab.y,tab.width,tab.height,tab.color,tab.corner
 							local x,y,text,font,col,format = tab.x,tab.y,tab.text,tab.font,tab.color,tab.format
 							
-							y = y + 30
+							y = y + HD.Y_BUFFER
 							local modx, mody = nil
 							if HD.ScalePos then
 								modx, mody = math.Round(ScrW()/x, 2), math.Round(ScrH()/y, 2)
@@ -607,7 +599,7 @@ if CLIENT then
 								if modw == math.huge then width = 0 else width = "ScrW()/"..modw.."" end
 								if modh == math.huge then height = 0 else height = "ScrH()/"..modh.."" end
 							end
-							y = y + 30 -- Fix for the Canvas not being exactly screen size
+							y = y + HD.Y_BUFFER -- Fix for the Canvas not being exactly screen size
 							if HD.ScalePos then
 								modx, mody = math.Round(ScrW()/x, 2), math.Round(ScrH()/y, 2)
 								if modx == math.huge then x = 0 else x = "ScrW()/"..modx end
@@ -627,12 +619,12 @@ if CLIENT then
 							-- Assemble the color
 							col = "Color("..col.r..", "..col.g..", "..col.b..", "..col.a..")"
 							
-							-- Put together the surface stuff
+							-- Put together the surface stuff, its a hacky fix
 							local draw = string.format("surface.DrawTexturedRect(%s, %s, %s, %s, "..col..")", x, y, width, height)
 							ExportData[i][c] = [[
 -- Move this OUT of the HUDPaint hook in order to make sure your HUD is efficient
---local Texture]]..c..[[ = surface.GetTextureID("]]..texturestring..[[") 
-surface.SetTexture(Texture]]..c..[[)
+--local Texture]]..c..[[ = Material("]]..texturestring..[[") 
+surface.SetMaterial(Texture]]..c..[[)
 surface.SetDrawColor(]]..col..[[)
 ]]..draw
 						end
@@ -644,7 +636,305 @@ surface.SetDrawColor(]]..col..[[)
 		end
 		return ExportData or {}
 	end
+	
+	
+	function HD.FontCreator()
+			local AntiClick = vgui.Create("DFrame")
+		AntiClick:SetSize(ScrW(),ScrH())
+		AntiClick:SetPos(0,0)
+		AntiClick:SetTitle("")
+		AntiClick:SetDraggable(false)
+		AntiClick.btnMaxim:SetVisible( false )
+		AntiClick.btnMinim:SetVisible( false )
+		AntiClick.btnClose:SetVisible( false )
+		AntiClick.Paint = function()
+			draw.RoundedBox(0, 0, 0, AntiClick:GetWide(), AntiClick:GetTall(), Color(0,0,0,0))
+		end
+		
+			local Frame = vgui.Create("DFrame", AntiClick)
+		Frame:SetSize(500, 400)
+		Frame:SetPos(ScrW()/2-Frame:GetWide()/2,ScrH()/2-Frame:GetTall()/2)
+		Frame:SetTitle("")
+		Frame:MakePopup()
+		Frame:SetDraggable(true)
+		Frame.btnMaxim:SetVisible( false )
+		Frame.btnMinim:SetVisible( false )
+		Frame.btnClose:SetVisible( true )
+		Frame.Paint = function()
+			draw.RoundedBox(0, 0, 0, Frame:GetWide(), Frame:GetTall(), Color(39, 174, 96))
+		end
+		
+		local Exit = vgui.Create( "DButton", Frame )
+		Exit:SetText( "Exit" )
+		Exit:SetTextColor( Color(255,255,255,255) )
+		Exit:SetFont("HD_Title")
+		Exit:SetSize( 80, 30 ) 
+		Exit:SetPos( Frame:GetWide()-Exit:GetWide()-10, 10 ) 
+		Exit.Paint = function()
+			draw.RoundedBox( 0, 0, 0, Exit:GetWide(), Exit:GetTall(), Color(200, 79, 79,255) )
+		end
+		Exit.DoClick = function()
+			AntiClick:Close()
+			Frame:Close()
+		end
+	
+	end
+	
+	--// Tutorial opener
+	function HD.OpenTutorial()
+			local Frame = vgui.Create("DFrame")
+		Frame:SetSize(ScrW()-80,ScrH()-80)
+		Frame:SetPos(40,40)
+		Frame:SetTitle("")
+		Frame:MakePopup()
+		Frame:SetDraggable(false)
+		Frame.btnMaxim:SetVisible( false )
+		Frame.btnMinim:SetVisible( false )
+		Frame.btnClose:SetVisible( false )
+		Frame.Paint = function()
+			draw.RoundedBox(0, 0, 0, Frame:GetWide(), Frame:GetTall(), Color(39, 174, 96))
+		end
+		
+		local text = "Exho's HUD Designer"
+		local w, h = HD.GetTextSize(text, "HD_Title")
+		
+			local Title = vgui.Create("DLabel", Frame)
+		Title:SetPos( Frame:GetWide()/2-w/2, 15) 
+		Title:SetColor(Color(255,255,255)) 
+		Title:SetFont("HD_Title")
+		Title:SetText(text)
+		Title:SizeToContents() 
+		
 
+			local Choose = vgui.Create("DLabel", Frame) 
+		Choose:SetSize(Frame:GetWide()/2, 0)
+		Choose:SetColor(Color(255,255,255)) 
+		Choose:SetFont("HD_Title")
+		Choose:SetText("Please choose a tutorial type to view") 
+		Choose:SizeToContents() 
+		local w,h =HD.GetTextSize(Choose:GetText(), "HD_Title")
+		Choose:SetPos(ScrW()/2-w/1.5, ScrH()/2-120) 
+		
+		local Choice1, Choice2 = nil
+		
+			Choice1 = vgui.Create( "DButton", Frame )
+		Choice1:SetText( "Text" )
+		Choice1:SetTextColor( Color(255,255,255,255) )
+		Choice1:SetFont("HD_Title")
+		Choice1:SetSize( 140, 60 ) 
+		Choice1:SetPos( Frame:GetWide()/2-Choice1:GetWide()-10, Frame:GetTall()/2-Choice1:GetTall()/2 ) 
+		Choice1.Paint = function()
+			draw.RoundedBox( 0, 0, 0, Choice1:GetWide(), Choice1:GetTall(), Color(200, 79, 79,255) )
+		end
+		Choice1.DoClick = function()
+			Choice1:SetVisible(false)
+			Choice2:SetVisible(false)
+			Title:SetVisible(false)
+			Choose:SetVisible(false)
+			surface.PlaySound("buttons/button9.wav")
+			
+			local text = "Exho's HUD Designer Tutorial"
+			local w, h = HD.GetTextSize(text, "HD_Title")
+			
+				local Title = vgui.Create("DLabel", Frame)
+			Title:SetPos( Frame:GetWide()/2-w/2, 15) 
+			Title:SetColor(Color(255,255,255)) 
+			Title:SetFont("HD_Title")
+			Title:SetText(text)
+			Title:SizeToContents() 
+			
+				local Video = vgui.Create( "HTML", Frame) 
+			Video:SetSize( Frame:GetWide()-100, Frame:GetTall() - 100 )
+			Video:SetPos(50, 50)
+			Video:OpenURL("http://www.exho.comeze.com/huddesigner/tutorial.html")
+			
+			local Exit = vgui.Create( "DButton", Frame )
+			Exit:SetText( "Exit" )
+			Exit:SetTextColor( Color(255,255,255,255) )
+			Exit:SetFont("HD_Title")
+			Exit:SetSize( 80, 30 ) 
+			Exit:SetPos( Frame:GetWide()/2+10, Frame:GetTall()-Exit:GetTall()-10 ) 
+			Exit.Paint = function()
+				draw.RoundedBox( 0, 0, 0, Exit:GetWide(), Exit:GetTall(), Color(200, 79, 79,255) )
+			end
+			Exit.DoClick = function()
+				Frame:Close()
+				LocalPlayer():ConCommand( "hd_tutorial 0" )
+				timer.Simple(0.3, function()
+					HD.OpenDesigner(true)
+				end)
+			end
+			
+				local Back = vgui.Create( "DButton", Frame )
+			Back:SetText( "Back" )
+			Back:SetTextColor( Color(255,255,255,255) )
+			Back:SetFont("HD_Title")
+			Back:SetSize( 80, 30 ) 
+			Back:SetPos( Frame:GetWide()/2-Back:GetWide()-10, Frame:GetTall()-Back:GetTall()-10 ) 
+			Back.Paint = function()
+				draw.RoundedBox( 0, 0, 0, Back:GetWide(), Back:GetTall(), Color(66, 244, 123,255) )
+			end
+			Back.DoClick = function()
+				Frame:Close()
+				HD.OpenTutorial()
+			end
+		end
+		
+			Choice2 = vgui.Create( "DButton", Frame )
+		Choice2:SetText( "Video" )
+		Choice2:SetTextColor( Color(255,255,255,255) )
+		Choice2:SetFont("HD_Title")
+		Choice2:SetSize( 140, 60 ) 
+		Choice2:SetPos( Frame:GetWide()/2+10, Frame:GetTall()/2-Choice2:GetTall()/2 ) 
+		Choice2.Paint = function()
+			draw.RoundedBox( 0, 0, 0, Choice2:GetWide(), Choice2:GetTall(), Color(200, 79, 79,255) )
+		end
+		Choice2.DoClick = function()
+			Choice1:SetVisible(false)
+			Choice2:SetVisible(false)
+			Title:SetVisible(false)
+			surface.PlaySound("buttons/button9.wav")
+			
+				local Video = vgui.Create( "HTML", Frame) 
+			Video:SetSize( Frame:GetWide()-100, Frame:GetTall() - 100 )
+			Video:SetPos(50, 50)
+			Video:OpenURL("www.youtube.com/embed/iakAzLzjfb8")
+			
+				local Exit = vgui.Create( "DButton", Frame )
+			Exit:SetText( "Exit" )
+			Exit:SetTextColor( Color(255,255,255,255) )
+			Exit:SetFont("HD_Title")
+			Exit:SetSize( 80, 30 ) 
+			Exit:SetPos( Frame:GetWide()/2+10, Frame:GetTall()-Exit:GetTall()-10 ) 
+			Exit.Paint = function()
+				draw.RoundedBox( 0, 0, 0, Exit:GetWide(), Exit:GetTall(), Color(200, 79, 79,255) )
+			end
+			Exit.DoClick = function()
+				Frame:Close()
+				LocalPlayer():ConCommand( "hd_tutorial 0" )
+				timer.Simple(0.3, function()
+					HD.OpenDesigner(true)
+				end)
+			end
+			
+				local Back = vgui.Create( "DButton", Frame )
+			Back:SetText( "Back" )
+			Back:SetTextColor( Color(255,255,255,255) )
+			Back:SetFont("HD_Title")
+			Back:SetSize( 80, 30 ) 
+			Back:SetPos( Frame:GetWide()/2-Back:GetWide()-10, Frame:GetTall()-Back:GetTall()-10 ) 
+			Back.Paint = function()
+				draw.RoundedBox( 0, 0, 0, Back:GetWide(), Back:GetTall(), Color(66, 244, 123,255) )
+			end
+			Back.DoClick = function()
+				Frame:Close()
+				HD.OpenTutorial()
+			end
+			
+		end
+	end
+	
+	function HD.Splash()
+		-- Invisible panel so clients cannot click the Editor
+			local AntiClick = vgui.Create("DFrame")
+		AntiClick:SetSize(ScrW(),ScrH())
+		AntiClick:SetPos(0,0)
+		AntiClick:SetTitle("")
+		AntiClick:MakePopup()
+		AntiClick:SetDraggable(false)
+		AntiClick.btnMaxim:SetVisible( false )
+		AntiClick.btnMinim:SetVisible( false )
+		AntiClick.btnClose:SetVisible( false )
+		AntiClick.Paint = function()
+			draw.RoundedBox(0, 0, 0, AntiClick:GetWide(), AntiClick:GetTall(), Color(0,0,0,0))
+		end
+		
+			HD.SplashFrame = vgui.Create("DFrame", AntiClick)
+		HD.SplashFrame:SetSize(400,300)
+		HD.SplashFrame:SetPos(ScrW()/2 - HD.SplashFrame:GetWide()/2, ScrH()/2 - HD.SplashFrame:GetTall()/2)
+		HD.SplashFrame:SetTitle("")
+		HD.SplashFrame:SetDraggable(false)
+		HD.SplashFrame.btnMaxim:SetVisible( false )
+		HD.SplashFrame.btnMinim:SetVisible( false )
+		HD.SplashFrame.btnClose:SetVisible( false )
+		HD.SplashFrame.Paint = function()
+			draw.RoundedBox(0, 0, 0, HD.SplashFrame:GetWide(), HD.SplashFrame:GetTall(), Color(39, 174, 96))
+		end
+		
+		local Saves = file.Find( "hud_designer/save_*.txt", "DATA" ) -- Grab all the saves
+			
+			local SplashLoader = vgui.Create("DScrollPanel", HD.SplashFrame)
+		SplashLoader:SetSize(350, 240)
+		SplashLoader:SetPos(30, 40)
+		SplashLoader.Paint = function()
+			draw.RoundedBox(0, 0, 0, SplashLoader:GetWide(), SplashLoader:GetTall(), Color(39, 174, 96))
+		end
+		
+		local x, y = SplashLoader:GetPos()
+		local width, height = HD.GetTextSize("Click on a save to load", "HD_Smaller")
+		
+			local Label1 = vgui.Create("DLabel", HD.SplashFrame)
+		Label1:SetPos(x+ width - 30, 10) 
+		Label1:SetColor(Color(255,255,255)) 
+		Label1:SetFont("HD_Title")
+		Label1:SetText("Choose a save to load")
+		Label1:SizeToContents() 
+		
+		local SavePanels = {}
+		local i = 1
+		local YBuffer = 70
+		local BarBuffer = 0
+		if #Saves > 1 then BarBuffer = 15 end
+		
+			local NewProject = vgui.Create("DButton", SplashLoader)
+		NewProject:SetPos(10, 0)
+		NewProject:SetSize(SplashLoader:GetWide()-20-BarBuffer, 50)
+		NewProject:SetTextColor(Color(255,255,255))
+		NewProject:SetText("New Project")
+		NewProject:SetFont("HD_Button")
+		NewProject.Paint = function()
+			local col = Color(90,90,90, 250)
+			draw.RoundedBox(0, 0, 0, NewProject:GetWide(), NewProject:GetTall(), col)
+		end
+		NewProject.DoClick = function()
+			HD.SplashFrame:Close()
+			HD.SplashFrame = nil
+			AntiClick:Close()
+		end
+		
+		for i = 1, #Saves do	
+			local txt = file.Read( "hud_designer/"..Saves[i], "DATA" )
+			local tab = util.JSONToTable( txt ) 
+			
+			local name = tab.ProjectName or Saves[i]
+			name = string.gsub(name, "save_", "")
+			name = string.gsub(name, ".txt", "")
+			name = string.gsub(name, "_", " ")
+			
+			local Count 
+				SavePanels[i] = vgui.Create("DButton", SplashLoader)
+			SavePanels[i]:SetPos(10, YBuffer)
+			SavePanels[i]:SetSize(SplashLoader:GetWide()-20-BarBuffer, 50)
+			SavePanels[i]:SetTextColor(Color(255,255,255))
+			SavePanels[i]:SetText(name)
+			SavePanels[i]:SetFont("HD_Button")
+			SavePanels[i].Paint = function()
+				local col = Color(90,90,90, 250)
+				draw.RoundedBox(0, 0, 0, SavePanels[i]:GetWide(), SavePanels[i]:GetTall(), col)
+			end
+			SavePanels[i].DoClick = function()
+				HD.Load( Saves[i] )
+				
+				HD.SplashFrame:Close()
+				HD.SplashFrame = nil
+				AntiClick:Close()
+			end
+			
+			YBuffer = YBuffer + SavePanels[i]:GetTall() + 20
+		end
+	end
 end
+	
+	
 	
 

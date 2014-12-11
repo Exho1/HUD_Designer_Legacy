@@ -1,6 +1,6 @@
 ----// HUD Designer //----
 -- Author: Exho
--- Version: 12/7/14
+-- Version: 12/10/14
 
 if SERVER then
 	AddCSLuaFile()
@@ -24,7 +24,6 @@ end
 
 --[[ To Do:
 * More shapes
-* In-game testing
 * Recreate TTT's HUD in the editor
 * Variable based width/height for rectangles
 * Font creator
@@ -33,6 +32,7 @@ end
 In Progress:
 * Textured rects - Make a texture selector in the Shape Options right click menu
 * On-start pop up menu to choose a save
+* In-game testing
 ]]
 
 if CLIENT then
@@ -44,9 +44,6 @@ if CLIENT then
 	local showtut = CreateClientConVar("hd_tutorial", "1", true, true)	
 	
 	local i_grabber = Material( "vgui/hud_designer/grabber.png" )
-	--local i_bucket = Material( "vgui/hud_designer/bucket.png" )
-	--local i_dropper = Material( "vgui/hud_designer/dropper.png" )
-	--local i_trash = Material( "vgui/hud_designer/trashcan.png" )
 	
 	surface.CreateFont( "HD_Title", {
 	font = "Roboto Lt",
@@ -68,6 +65,13 @@ if CLIENT then
 	weight = 500,
 	antialias = true,
 } )
+
+	surface.CreateFont( "Arial24", {
+	font = "Arial",
+	size = 24,
+	weight = 500,
+	antialias = true,
+} )
 	
 	function HD.OpenDesigner(firstime)
 		if HD.DesignerOpen then 
@@ -79,6 +83,8 @@ if CLIENT then
 				return 
 			end
 		end
+		
+		hook.Remove("HUDPaint", "HUD_Designer_Demo")
 		
 		if showtut:GetBool() then
 			HD.OpenTutorial()
@@ -106,7 +112,7 @@ if CLIENT then
 			"draw.RoundedBox",
 			"draw.DrawText",
 			"surface.DrawTexturedRect",
-			--"render.RenderView" -- X and Y axis are broken some how
+			--"surface.CreateFont"
 		}
 		
 		HD.FormatTypes = {
@@ -142,6 +148,7 @@ if CLIENT then
 			["Save"] = 8,
 			["Load"] = 9,
 			["Export"] = 10,
+			["Demo"] = 11,
 		}
 		
 		HD.Boundaries = {} -- Used for clicking
@@ -163,6 +170,7 @@ if CLIENT then
 		HD.Cursor = "arrow"
 		HD.ProjectName = "Project Name"
 		HD.FAKE_TEXTURE = "vgui/nonexistant.png"
+		HD.Y_BUFFER = 35
 		
 		HD.ScaleSize, HD.ScalePos = false
 		
@@ -268,13 +276,12 @@ if CLIENT then
 		HD.ProjectText:SetPos( ix - HD.ProjectText:GetWide()-20, 5 )
 		HD.ProjectText:SetText( HD.ProjectName )
 		HD.ProjectText:SetFont("HD_Button")
-		local LastCheck = 0
 		HD.ProjectText.OnChange = function( self, val )
 			HD.ProjectName = self:GetText()
-			LastCheck = CurTime() + 20
 		end
+		local LastCheck = 0
 		HD.ProjectText.Think = function()
-			if CurTime() > LastCheck then
+			if CurTime() > LastCheck and not HD.ProjectText:IsEditing() then
 				HD.ProjectText:SetText( HD.ProjectName )
 				LastCheck = CurTime() + 2
 			end
@@ -283,7 +290,7 @@ if CLIENT then
 		--// Grid
 			HD.Canvas = vgui.Create("DPanel", HD.Frame)
 		HD.Canvas:SetSize(ScrW()-0, ScrH()-30)
-		HD.Canvas:SetPos(0,35)
+		HD.Canvas:SetPos( 0, HD.Y_BUFFER)
 		local NextCheck = 0
 		function HD.Canvas:PaintOver(w,h)
 			-- Drawing the shapes here
@@ -327,18 +334,8 @@ if CLIENT then
 						for id, data in pairs(objects) do
 							draw.DrawText( data.text, data.font, data.x, data.y, data.color)
 						end
-					elseif class == "render.RenderView" then
-						for id, data in pairs(objects) do
-							local CamData = {}
-							CamData.angles = data.angles
-							CamData.origin = data.origin
-							CamData.x = data.x
-							CamData.y = data.y
-							CamData.w = data.width
-							CamData.h = data.height
-							
-							render.RenderView( CamData )
-						end
+					else
+					
 					end
 				end
 			end
